@@ -7,10 +7,11 @@ venv/
 # Node
 frontend/node_modules/
 frontend/dist/
+.vite/
 
 # Pretrained YOLO base models (auto-download)
-yolov8n.pt
-yolov8n-cls.pt
+*.pt
+!backend/model/yolo_best.pt
 
 # OS
 .DS_Store
@@ -20,3 +21,4 @@ desktop.ini
 # IDE
 .vscode/
 .idea/
+.claude/

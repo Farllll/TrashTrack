@@ -9,9 +9,9 @@
     GET  /health       → status backend
     POST /classify     → multipart: file=<image>
 
-  Jalankan:
-    pip install fastapi uvicorn python-multipart ultralytics pillow
-    uvicorn backend:app --reload --port 8000
+  Jalankan (dari folder TrashTrack_UI/):
+    pip install -r backend/requirements.txt
+    uvicorn backend.main:app --reload --port 8000
 ====================================================
 """
 
