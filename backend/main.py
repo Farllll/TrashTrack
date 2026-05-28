@@ -27,9 +27,9 @@ from ultralytics import YOLO
 # ─────────────────────────────────────────────────
 #  KONFIGURASI
 # ─────────────────────────────────────────────────
-BASE_DIR     = Path(__file__).parent.resolve()
-MODEL_PATH   = BASE_DIR / "model"   / "yolo_best.pt"
-MAPPING_PATH = BASE_DIR / "dataset" / "label_mapping.json"
+ROOT_DIR     = Path(__file__).parent.parent.resolve()   # → TrashTrack_UI/
+MODEL_PATH   = ROOT_DIR / "model"   / "yolo_best.pt"
+MAPPING_PATH = ROOT_DIR / "dataset" / "label_mapping.json"
 
 for p in (MODEL_PATH, MAPPING_PATH):
     if not p.exists():
