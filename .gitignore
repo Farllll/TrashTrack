@@ -13,6 +13,14 @@ frontend/dist/
 *.pt
 !backend/model/yolo_best.pt
 
+# Dataset generated (bisa dibuat ulang dengan pipeline scripts)
+dataset/processed/
+dataset/yolo_cls/
+dataset/temp/
+dataset/trashnet.zip
+dataset/trashnet_raw/
+# dataset/raw/ TIDAK di-ignore — harus di-push ke GitHub
+
 # OS
 .DS_Store
 Thumbs.db
