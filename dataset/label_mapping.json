@@ -1,0 +1,74 @@
+{
+  "lvl1_classes": [
+    "organik",
+    "anorganik",
+    "b3"
+  ],
+  "lvl2_classes": [
+    "daun_ranting",
+    "kayu",
+    "kertas_kardus",
+    "plastik",
+    "logam",
+    "kaca",
+    "tekstil",
+    "karet",
+    "baterai_aki",
+    "elektronik",
+    "cat_pelarut",
+    "lampu_merkuri"
+  ],
+  "lvl1_map": {
+    "organik": 0,
+    "anorganik": 1,
+    "b3": 2
+  },
+  "lvl2_map": {
+    "daun_ranting": 0,
+    "kayu": 1,
+    "kertas_kardus": 2,
+    "plastik": 3,
+    "logam": 4,
+    "kaca": 5,
+    "tekstil": 6,
+    "karet": 7,
+    "baterai_aki": 8,
+    "elektronik": 9,
+    "cat_pelarut": 10,
+    "lampu_merkuri": 11
+  },
+  "sub_to_lvl1": {
+    "daun_ranting": "organik",
+    "kayu": "organik",
+    "kertas_kardus": "organik",
+    "plastik": "anorganik",
+    "logam": "anorganik",
+    "kaca": "anorganik",
+    "tekstil": "anorganik",
+    "karet": "anorganik",
+    "baterai_aki": "b3",
+    "elektronik": "b3",
+    "cat_pelarut": "b3",
+    "lampu_merkuri": "b3"
+  },
+  "hierarchy": {
+    "organik": [
+      "daun_ranting",
+      "kayu",
+      "kertas_kardus"
+    ],
+    "anorganik": [
+      "plastik",
+      "logam",
+      "kaca",
+      "tekstil",
+      "karet"
+    ],
+    "b3": [
+      "baterai_aki",
+      "elektronik",
+      "cat_pelarut",
+      "lampu_merkuri"
+    ]
+  }
+}

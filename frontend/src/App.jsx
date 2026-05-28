@@ -3,99 +3,42 @@ import Navbar from "./components/Navbar";
 import UploadZone from "./components/UploadZone";
 import WebcamCapture from "./components/WebcamCapture";
 import ResultPanel from "./components/ResultPanel";
-import TRASH_DATA from "./trashData";
 
-// ── KONFIGURASI ──────────────────────────────────────────────────────────────
-// Set DUMMY_MODE = true untuk testing tanpa model.
-// Setelah selesai training di Teachable Machine, set ke false dan isi MODEL_URL.
-const DUMMY_MODE = false;
-const MODEL_URL = "https://teachablemachine.withgoogle.com/models/PR6vDz8Rr/"; // ganti ke URL Teachable Machine kamu setelah export
-
-// Mapping label output model → key di trashData.js
-// Tambahkan variasi nama kalau Teachable Machine kamu pakai penamaan berbeda
-const LABEL_MAP = {
-  // Plastik
-  "plastic": "plastic",       "Plastic": "plastic",
-  "plastic_bag": "plastic_bag", "Plastic_bag": "plastic_bag", "Plastic Bag": "plastic_bag",
-  "plastic_bottle": "plastic_bottle", "Plastic_bottle": "plastic_bottle", "Plastic Bottle": "plastic_bottle",
-
-  // Kertas
-  "paper": "paper",           "Paper": "paper",
-  "cardboard": "cardboard",   "Cardboard": "cardboard",
-
-  // Kaca
-  "glass": "glass",           "Glass": "glass",
-  "broken_glass": "broken_glass", "Broken_glass": "broken_glass",
-
-  // Logam
-  "metal": "metal",           "Metal": "metal",
-  "metal_scrap": "metal_scrap", "Metal_scrap": "metal_scrap",
-
-  // Organik (kelas utama dataset Kaggle garbage-classification-v2)
-  "biological": "biological", "Biological": "biological",
-  "food_organics": "food_organics", "Food_organics": "food_organics", "Food Organics": "food_organics",
-  "vegetation": "vegetation", "Vegetation": "vegetation",
-
-  // Tekstil
-  "textile": "textile",       "Textile": "textile",
-  "shoes": "shoes",           "Shoes": "shoes",
-
-  // B3
-  "battery": "battery",       "Battery": "battery",
-  "electronics": "electronics", "Electronics": "electronics",
-  "lightbulb": "lightbulb",  "Lightbulb": "lightbulb",
-
-  // Residu
-  "trash": "trash",           "Trash": "trash",
-  "cigarette": "cigarette",   "Cigarette": "cigarette",
-};
-
-const keys = Object.keys(TRASH_DATA);
+// Backend FastAPI — di-proxy oleh Vite (lihat vite.config.js)
+const BACKEND = "/api";
 
 export default function App() {
-  const [image, setImage] = useState(null);
-  const [result, setResult] = useState(null);
+  const [image, setImage]       = useState(null);
+  const [result, setResult]     = useState(null);
   const [scanning, setScanning] = useState(false);
-  const [scanPct, setScanPct] = useState(0);
-  const [dark, setDark] = useState(false);
-  const [mode, setMode] = useState("upload");
+  const [scanPct, setScanPct]   = useState(0);
+  const [dark, setDark]         = useState(false);
+  const [mode, setMode]         = useState("upload");
   const [apiError, setApiError] = useState(null);
-  const [modelReady, setModelReady] = useState(false);
-  const [modelLoading, setModelLoading] = useState(false);
+  const [backendOk, setBackendOk] = useState(null); // null=belum cek, true/false
 
-  const modelRef = useRef(null);
-
+  // Cek backend saat mount
   useEffect(() => {
-    if (DUMMY_MODE) {
-      setModelReady(false);
-      setModelLoading(false);
-      return;
-    }
-    const loadModel = async () => {
-      setModelLoading(true);
-      try {
-        const tmImage = await import("@teachablemachine/image");
-        const model = await tmImage.load(MODEL_URL + "model.json", MODEL_URL + "metadata.json");
-        modelRef.current = model;
-        setModelReady(true);
-      } catch (err) {
-        console.error("Gagal load model:", err);
-        setApiError(`Gagal memuat model: ${err.message}`);
-      } finally {
-        setModelLoading(false);
-      }
-    };
-    loadModel();
+    fetch(BACKEND + "/health")
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(() => setBackendOk(true))
+      .catch(() => setBackendOk(false));
   }, []);
+
+  const progressRef = useRef(null);
 
   const startProgressSim = (maxPct = 90) => {
     let pct = 0;
-    const iv = setInterval(() => {
+    progressRef.current = setInterval(() => {
       pct += Math.random() * 15;
-      if (pct >= maxPct) { clearInterval(iv); pct = maxPct; }
+      if (pct >= maxPct) { clearInterval(progressRef.current); pct = maxPct; }
       setScanPct(Math.min(Math.round(pct), maxPct));
     }, 120);
-    return iv;
+  };
+
+  const stopProgress = () => {
+    clearInterval(progressRef.current);
+    progressRef.current = null;
   };
 
   const handleFile = async (file) => {
@@ -107,50 +50,33 @@ export default function App() {
     setScanning(true);
     setScanPct(0);
 
-    const progressInterval = startProgressSim(85);
+    startProgressSim(85);
 
     try {
-      const imgElement = new Image();
-      imgElement.crossOrigin = "anonymous";
-      imgElement.src = url;
-      await new Promise((resolve, reject) => {
-        imgElement.onload = resolve;
-        imgElement.onerror = reject;
-      });
+      const formData = new FormData();
+      formData.append("file", file);
 
-      let trashKey, confidence;
+      const res = await fetch(BACKEND + "/classify", { method: "POST", body: formData });
 
-      if (modelRef.current) {
-        const predictions = await modelRef.current.predict(imgElement);
-        const best = predictions.sort((a, b) => b.probability - a.probability)[0];
-        trashKey = LABEL_MAP[best.className] ?? "trash";
-        confidence = best.probability * 100;
-      } else {
-        const key = keys[Math.floor(Math.random() * keys.length)];
-        trashKey = key;
-        confidence = 70 + Math.random() * 25;
-        setApiError("Model belum siap — menampilkan hasil dummy.");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail ?? `Server error ${res.status}`);
       }
 
-      const trashInfo = TRASH_DATA[trashKey] ?? TRASH_DATA["trash"];
-      clearInterval(progressInterval);
+      const data = await res.json();
+      stopProgress();
       setScanPct(100);
 
       setTimeout(() => {
-        setResult({ ...trashInfo, confidence, bbox: trashInfo.bbox });
+        setResult(data);
         setScanning(false);
       }, 300);
 
     } catch (err) {
-      clearInterval(progressInterval);
-      console.error("Klasifikasi error:", err);
-      const key = keys[Math.floor(Math.random() * keys.length)];
-      setApiError(`Error: ${err.message} — menampilkan hasil dummy.`);
-      setTimeout(() => {
-        setResult(TRASH_DATA[key]);
-        setScanning(false);
-        setScanPct(0);
-      }, 500);
+      stopProgress();
+      setApiError(`Error: ${err.message}`);
+      setScanning(false);
+      setScanPct(0);
     }
   };
 
@@ -160,18 +86,18 @@ export default function App() {
     setScanning(false);
     setScanPct(0);
     setApiError(null);
+    stopProgress();
   };
 
   const switchMode = (next) => { handleReset(); setMode(next); };
 
-  const statusDot = DUMMY_MODE ? "bg-yellow-400"
-    : modelLoading ? "bg-blue-400 animate-pulse"
-      : modelReady ? "bg-emerald-500"
-        : "bg-red-400";
-  const statusLabel = DUMMY_MODE ? "DUMMY MODE"
-    : modelLoading ? "MEMUAT MODEL..."
-      : modelReady ? "MODEL SIAP"
-        : "GAGAL LOAD MODEL";
+  // Status backend indicator
+  const statusDot = backendOk === null ? "bg-blue-400 animate-pulse"
+    : backendOk ? "bg-emerald-500"
+      : "bg-red-400";
+  const statusLabel = backendOk === null ? "MENGHUBUNGKAN..."
+    : backendOk ? "BACKEND SIAP"
+      : "BACKEND OFFLINE";
 
   const theme = dark
     ? {
@@ -248,10 +174,12 @@ export default function App() {
       </div>
 
       {apiError && (
-        <div className={`relative z-10 px-8 py-2 text-[11px] flex items-center gap-2 ${dark ? "bg-yellow-950/40 text-yellow-400 border-b border-yellow-900"
-            : "bg-yellow-50 text-yellow-700 border-b border-yellow-200"
+        <div className={`relative z-10 px-8 py-2 text-[11px] flex items-center gap-2 ${dark
+            ? "bg-red-950/40 text-red-400 border-b border-red-900"
+            : "bg-red-50 text-red-700 border-b border-red-200"
           }`}>
           <span>⚠️</span><span>{apiError}</span>
+          {!backendOk && <span className="ml-2 opacity-70">— Pastikan backend berjalan: <code>uvicorn backend:app --reload --port 8000</code></span>}
         </div>
       )}
 
@@ -271,7 +199,7 @@ export default function App() {
       <footer className={`relative z-10 flex items-center gap-3 px-4 md:px-8 py-3 border-t ${theme.footerBorder} ${theme.footerText} text-[11px] tracking-wide`}>
         <span>TrashTrack · Proyek ML Semester 4</span>
         <span className="hidden sm:inline">·</span>
-        <span className="hidden sm:inline">Model: Teachable Machine + TensorFlow.js</span>
+        <span className="hidden sm:inline">Model: YOLOv8n-cls · 12 kelas · 98.6% akurasi</span>
       </footer>
     </div>
   );
