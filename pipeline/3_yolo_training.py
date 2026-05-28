@@ -2,7 +2,7 @@
 ====================================================
   SCRIPT 3B: YOLO CLASSIFICATION TRAINING
   ─────────────────────────────────────────────────
-  Latih YOLOv8 classifier untuk klasifikasi sampah 12 kelas.
+  Latih YOLOv8 classifier untuk klasifikasi sampah 19 kelas.
 
   Alur:
     Step 1 – Flatten dataset ke format YOLO cls (hapus layer lvl1)

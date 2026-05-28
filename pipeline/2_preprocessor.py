@@ -1,6 +1,6 @@
 """
 ====================================================
-  SCRIPT 2: PREPROCESSOR – HIERARKIS
+  SCRIPT 2: PREPROCESSOR – HIERARKIS (4 Lvl1, 19 Kelas)
   ─────────────────────────────────────────────────
   Pipeline (dijalankan secara berurutan):
     Step 1 – Cleaning   : Hapus file korup & duplikat (MD5 hash)
@@ -45,12 +45,18 @@ SPLIT      = {"train": 0.80, "val": 0.10, "test": 0.10}
 TARGET_PER_SUBCLASS = 200
 
 HIERARCHY = {
-    "organik"  : ["daun_ranting", "kayu", "kertas_kardus"],
-    "anorganik": ["plastik", "logam", "kaca", "tekstil", "karet"],
-    "b3"       : ["baterai_aki", "elektronik", "cat_pelarut", "lampu_merkuri"],
+    "anorganik": ["kaca", "karet", "logam", "styrofoam", "kardus", "plastik", "tekstil"],
+    "organik"  : ["ampas", "kayu", "daun_ranting", "kertas_tisu"],
+    "b3"       : ["baterai", "elektronik", "lampu_merkuri", "medis", "kimia"],
+    "residu"   : ["popok_pembalut", "puntung_rokok", "sisa_konsumsi"],
 }
 
-COLORS = {"organik": "#4CAF50", "anorganik": "#2196F3", "b3": "#F44336"}
+COLORS = {
+    "anorganik": "#2196F3",
+    "organik"  : "#4CAF50",
+    "b3"       : "#F44336",
+    "residu"   : "#9C27B0",
+}
 
 random.seed(SEED)
 

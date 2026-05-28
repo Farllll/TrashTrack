@@ -199,7 +199,7 @@ export default function App() {
       <footer className={`relative z-10 flex items-center gap-3 px-4 md:px-8 py-3 border-t ${theme.footerBorder} ${theme.footerText} text-[11px] tracking-wide`}>
         <span>TrashTrack · Proyek ML Semester 4</span>
         <span className="hidden sm:inline">·</span>
-        <span className="hidden sm:inline">Model: YOLOv8n-cls · 12 kelas · 98.6% akurasi</span>
+        <span className="hidden sm:inline">Model: YOLOv8n-cls · 4 kategori · 19 kelas</span>
       </footer>
     </div>
   );
