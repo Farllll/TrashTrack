@@ -42,13 +42,13 @@ TEMP_DIR   = ROOT_DIR / "dataset" / "temp"
 IMG_SIZE   = (224, 224)
 SEED       = 42
 SPLIT      = {"train": 0.80, "val": 0.10, "test": 0.10}
-TARGET_PER_SUBCLASS = 200
+TARGET_PER_SUBCLASS = 800
 
 HIERARCHY = {
     "anorganik": ["kaca", "karet", "logam", "styrofoam", "kardus", "plastik", "tekstil"],
     "organik"  : ["ampas", "kayu", "daun_ranting", "kertas_tisu"],
     "b3"       : ["baterai", "elektronik", "lampu_merkuri", "medis", "kimia"],
-    "residu"   : ["popok_pembalut", "puntung_rokok", "sisa_konsumsi"],
+    "residu"   : ["popok_pembalut", "puntung_rokok"],
 }
 
 COLORS = {
@@ -286,15 +286,20 @@ def visualize(stats: dict):
         )
         lvl1_totals[lvl1] = total
 
-    ax2.pie(
-        lvl1_totals.values(),
-        labels=[f"{k.upper()}\n({v} gambar)" for k, v in lvl1_totals.items()],
-        colors=[COLORS[k] for k in lvl1_totals],
-        autopct="%1.1f%%",
-        startangle=90,
-        textprops={"fontsize": 11},
-    )
-    ax2.set_title("Proporsi Level 1 (Organik / Anorganik / B3)")
+    nonzero = {k: v for k, v in lvl1_totals.items() if v > 0}
+    if nonzero:
+        ax2.pie(
+            nonzero.values(),
+            labels=[f"{k.upper()}\n({v} gambar)" for k, v in nonzero.items()],
+            colors=[COLORS[k] for k in nonzero],
+            autopct="%1.1f%%",
+            startangle=90,
+            textprops={"fontsize": 11},
+        )
+    else:
+        ax2.text(0.5, 0.5, "Belum ada data", ha="center", va="center",
+                 transform=ax2.transAxes, fontsize=12, color="gray")
+    ax2.set_title("Proporsi Level 1")
 
     plt.tight_layout()
     (ROOT_DIR / "dataset").mkdir(exist_ok=True)

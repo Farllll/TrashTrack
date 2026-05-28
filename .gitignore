@@ -13,13 +13,17 @@ frontend/dist/
 *.pt
 !backend/model/yolo_best.pt
 
-# Dataset generated (bisa dibuat ulang dengan pipeline scripts)
+# Dataset — raw terlalu besar (~1.7GB), gunakan pipeline/1_dataset_collector.py untuk mengumpulkan
+dataset/raw/
 dataset/processed/
 dataset/yolo_cls/
 dataset/temp/
 dataset/trashnet.zip
 dataset/trashnet_raw/
-# dataset/raw/ TIDAK di-ignore — harus di-push ke GitHub
+dataset/distribusi_dataset.png
+
+# YOLO training run folders (generated)
+model/yolo_classifier*/
 
 # OS
 .DS_Store

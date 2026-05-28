@@ -37,10 +37,10 @@ MAPPING_PATH  = ROOT_DIR / "dataset" / "label_mapping.json"
 MODEL_DIR     = ROOT_DIR / "model"
 YOLO_BEST     = MODEL_DIR / "yolo_best.pt"   # dibaca oleh backend/main.py
 
-EPOCHS   = 30
+EPOCHS   = 100
 IMG_SIZE = 224
 BATCH    = 16    # turunkan ke 8 jika RAM terbatas
-PATIENCE = 6
+PATIENCE = 15
 DEVICE   = "0"   # GPU NVIDIA RTX 3050
 
 MODEL_DIR.mkdir(exist_ok=True)
@@ -98,16 +98,13 @@ def prepare_yolo_dataset():
 #  STEP 2: TRAINING
 # ─────────────────────────────────────────────────
 def train_yolo():
-    """
-    Train YOLOv8n-cls (nano classifier, ImageNet pretrained) pada 12 kelas Level-2.
-    Gunakan yolov8s-cls.pt untuk akurasi lebih tinggi (lebih lambat).
-    """
+    """Train YOLOv8m-cls (medium classifier, ImageNet pretrained) pada 18 kelas Level-2."""
     print("[TRAIN] Memulai YOLOv8 Classification Training...")
-    print(f"  Model   : yolov8n-cls.pt (nano, ImageNet pretrained)")
+    print(f"  Model   : yolov8m-cls.pt (medium, ImageNet pretrained)")
     print(f"  Epochs  : {EPOCHS}  |  Batch: {BATCH}  |  Device: {DEVICE}")
     print(f"  Kelas   : {len(mapping['lvl2_classes'])} kelas Level-2")
 
-    model   = YOLO("yolov8n-cls.pt")
+    model   = YOLO("yolov8m-cls.pt")
     results = model.train(
         data    = str(YOLO_DIR),
         epochs  = EPOCHS,

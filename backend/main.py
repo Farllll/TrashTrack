@@ -178,13 +178,6 @@ TRASH_INFO: dict[str, dict] = {
         "tip": "Puntung rokok mengandung ribuan bahan kimia berbahaya. "
                "Jangan dibuang sembarangan — dapat mencemari air tanah.",
     },
-    "sisa_konsumsi": {
-        "label": "Sisa Konsumsi", "code": "RSD-03", "category": "Residu",
-        "decompose": "Bervariasi",    "bin": "Hitam", "binHex": "#6B7280",
-        "icon": "🗑️",
-        "tip": "Sisa kemasan campur yang tidak bisa dipilah. "
-               "Usahakan kurangi dari sumber — pilih produk kemasan minimal.",
-    },
 }
 
 _FALLBACK = {

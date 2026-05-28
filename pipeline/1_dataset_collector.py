@@ -54,7 +54,6 @@ HIERARCHY = {
     "residu": {
         "popok_pembalut": ["used diaper waste", "sanitary pad garbage", "popok bekas sampah", "diaper trash pile"],
         "puntung_rokok" : ["cigarette butt waste", "smoking litter garbage", "puntung rokok sampah", "cigarette stub trash"],
-        "sisa_konsumsi" : ["food waste leftovers", "mixed food garbage", "sisa makanan sampah", "leftover food trash"],
     },
 }
 
@@ -71,7 +70,6 @@ TRASHNET_MAP = {
     "plastic"  : ("anorganik", "plastik"),
     "metal"    : ("anorganik", "logam"),
     "glass"    : ("anorganik", "kaca"),
-    "trash"    : ("residu",    "sisa_konsumsi"),
 }
 
 def download_trashnet():
