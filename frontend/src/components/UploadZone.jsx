@@ -147,7 +147,6 @@ export default function UploadZone({ image, scanning, scanPct, onFile, onReset, 
                     whiteSpace: "nowrap",
                   }}
                 >
-                  <span>{result.icon}</span>
                   <span>{result.label}</span>
                   <span className="opacity-70 font-normal">· {result.confidence?.toFixed(1)}%</span>
                 </div>

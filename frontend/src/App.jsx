@@ -4,7 +4,7 @@ import UploadZone from "./components/UploadZone";
 import WebcamCapture from "./components/WebcamCapture";
 import ResultPanel from "./components/ResultPanel";
 
-// Backend FastAPI — di-proxy oleh Vite (lihat vite.config.js)
+// Backend FastAPI diteruskan (proxy) oleh Vite — lihat vite.config.js
 const BACKEND = "/api";
 
 export default function App() {
@@ -15,9 +15,9 @@ export default function App() {
   const [dark, setDark]         = useState(false);
   const [mode, setMode]         = useState("upload");
   const [apiError, setApiError] = useState(null);
-  const [backendOk, setBackendOk] = useState(null); // null=belum cek, true/false
+  const [backendOk, setBackendOk] = useState(null); // null = belum dicek, true/false
 
-  // Cek backend saat mount
+  // Cek backend saat komponen pertama dimuat
   useEffect(() => {
     fetch(BACKEND + "/health")
       .then(r => r.ok ? r.json() : Promise.reject())
@@ -60,7 +60,7 @@ export default function App() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail ?? `Server error ${res.status}`);
+        throw new Error(err.detail ?? `Kesalahan server ${res.status}`);
       }
 
       const data = await res.json();
@@ -109,7 +109,7 @@ export default function App() {
       footerBorder: "border-gray-800", divider: "border-gray-800",
       gridColor: "rgba(163,230,53,0.04)", accent: "text-lime-400",
       accentBg: "bg-lime-400", toggleBg: "bg-gray-800",
-      toggleIcon: "☀️", toggleLabel: "Light Mode",
+      toggleLabel: "Mode Terang",
       tabActive: "bg-gray-800 text-lime-400 border-gray-700",
       tabInactive: "text-gray-600 border-transparent hover:text-gray-400",
     }
@@ -122,7 +122,7 @@ export default function App() {
       footerBorder: "border-gray-200", divider: "border-gray-200",
       gridColor: "rgba(16,185,129,0.04)", accent: "text-emerald-600",
       accentBg: "bg-emerald-500", toggleBg: "bg-gray-100",
-      toggleIcon: "🌙", toggleLabel: "Dark Mode",
+      toggleLabel: "Mode Gelap",
       tabActive: "bg-white text-emerald-600 border-gray-200 shadow-sm",
       tabInactive: "text-gray-400 border-transparent hover:text-gray-600",
     };
@@ -153,17 +153,18 @@ export default function App() {
             onClick={() => switchMode("upload")}
             className={`px-3 md:px-4 py-1.5 rounded-md text-[12px] font-bold tracking-wide border transition-all duration-200 cursor-pointer ${mode === "upload" ? theme.tabActive : theme.tabInactive + " border-transparent"}`}
           >
-            ⬆ <span className="hidden sm:inline">Upload </span>Foto
+            <span className="hidden sm:inline">Upload </span>Foto
           </button>
           <button
             onClick={() => switchMode("webcam")}
             className={`px-3 md:px-4 py-1.5 rounded-md text-[12px] font-bold tracking-wide border transition-all duration-200 cursor-pointer ${mode === "webcam" ? theme.tabActive : theme.tabInactive + " border-transparent"}`}
           >
-            📷 Webcam
+            Webcam
           </button>
         </div>
         <span className={`ml-2 text-[11px] ${dark ? "text-gray-600" : "text-gray-400"} hidden md:inline`}>
-          {mode === "upload" ? "Unggah gambar dari perangkat" : "Ambil foto dari kamera"}
+          {mode === "upload" ? "Unggah gambar dari perangkat"
+            : "Ambil foto dari kamera"}
         </span>
         <div className="ml-auto flex items-center gap-1.5">
           <div className={`w-1.5 h-1.5 rounded-full ${statusDot}`} />
@@ -178,8 +179,8 @@ export default function App() {
             ? "bg-red-950/40 text-red-400 border-b border-red-900"
             : "bg-red-50 text-red-700 border-b border-red-200"
           }`}>
-          <span>⚠️</span><span>{apiError}</span>
-          {!backendOk && <span className="ml-2 opacity-70">— Pastikan backend berjalan: <code>uvicorn backend:app --reload --port 8000</code></span>}
+          <span>{apiError}</span>
+          {!backendOk && <span className="ml-2 opacity-70">— Pastikan backend berjalan: <code>uvicorn backend.main:app --reload --port 8000</code></span>}
         </div>
       )}
 
@@ -199,7 +200,7 @@ export default function App() {
       <footer className={`relative z-10 flex items-center gap-3 px-4 md:px-8 py-3 border-t ${theme.footerBorder} ${theme.footerText} text-[11px] tracking-wide`}>
         <span>TrashTrack · Proyek ML Semester 4</span>
         <span className="hidden sm:inline">·</span>
-        <span className="hidden sm:inline">Model: YOLOv8n-cls · 4 kategori · 19 kelas</span>
+        <span className="hidden sm:inline">Model: YOLO11 · 4 kategori · 18 kelas</span>
       </footer>
     </div>
   );

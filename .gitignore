@@ -11,19 +11,23 @@ frontend/dist/
 
 # Pretrained YOLO base models (auto-download)
 *.pt
-!backend/model/yolo_best.pt
+!model/yolo_best.pt
+!model/yolo_lvl1.pt
 
-# Dataset — raw terlalu besar (~1.7GB), gunakan pipeline/1_dataset_collector.py untuk mengumpulkan
+# Dataset — file mentah besar & hasil generate pipeline, jangan di-commit
 dataset/raw/
 dataset/processed/
 dataset/yolo_cls/
+dataset/yolo_cls_lvl1/
 dataset/temp/
 dataset/trashnet.zip
 dataset/trashnet_raw/
 dataset/distribusi_dataset.png
 
-# YOLO training run folders (generated)
+# YOLO training run folders (generated otomatis saat training)
 model/yolo_classifier*/
+model/yolo_finetune/
+model/yolo_lvl1/
 
 # OS
 .DS_Store

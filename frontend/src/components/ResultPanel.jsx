@@ -9,7 +9,7 @@ export default function ResultPanel({ result, scanning, dark, theme }) {
     if (!result || !resultRef.current) return;
     const el = resultRef.current;
     el.style.animation = "none";
-    // Force reflow
+    // Paksa reflow agar animasi diulang dari awal
     void el.offsetHeight;
     el.style.animation = "";
   }, [result]);
@@ -77,7 +77,7 @@ export default function ResultPanel({ result, scanning, dark, theme }) {
         <div className="flex-1 flex flex-col items-center justify-center gap-3 opacity-40">
           <span className={`text-[56px] ${emptyIcon} select-none`}>◎</span>
           <p className={`text-sm ${emptyText} font-bold`}>Hasil deteksi akan tampil di sini</p>
-          <p className={`text-xs ${emptySubtext}`}>Upload gambar terlebih dahulu</p>
+          <p className={`text-xs ${emptySubtext}`}>Unggah gambar terlebih dahulu</p>
         </div>
       )}
 
@@ -99,15 +99,8 @@ export default function ResultPanel({ result, scanning, dark, theme }) {
             <span className={`${theme.accent} font-bold`}>{result.code}</span>
           </div>
 
-          {/* Main result card */}
+          {/* Kartu hasil utama */}
           <div className={`result-card flex items-center gap-4 p-5 ${cardBg} border rounded-xl transition-colors duration-300`}>
-            {/* Icon dengan animasi bounce kecil */}
-            <span
-              className="text-[52px] select-none"
-              style={{ animation: "badgePop 0.5s cubic-bezier(0.22,1,0.36,1) 0.15s both" }}
-            >
-              {result.icon}
-            </span>
             <div>
               <p className={`text-[11px] ${labelColor} tracking-widest mb-1`}>Terdeteksi sebagai</p>
               <p className={`text-[22px] md:text-[30px] font-bold ${nameColor} leading-none`}>{result.label}</p>
@@ -125,6 +118,20 @@ export default function ResultPanel({ result, scanning, dark, theme }) {
             </div>
           </div>
 
+          {/* Warning confidence rendah */}
+          {result.low_confidence && (
+            <div className="result-badge rounded-lg px-3 py-2.5 flex items-start gap-2"
+              style={{ background: "#F59E0B18", border: "1px solid #F59E0B44" }}>
+              <div>
+                <p className="text-[11px] font-bold text-amber-500 m-0">Prediksi tidak yakin ({result.confidence.toFixed(0)}%)</p>
+                <p className="text-[11px] text-amber-600/80 m-0 mt-0.5">
+                  Objek ini mungkin tidak ada dalam dataset atau gambar kurang jelas.
+                  Coba foto ulang dengan pencahayaan lebih baik.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Confidence bar */}
           <div className="flex flex-col gap-2">
             <div className="flex justify-between items-center">
@@ -138,6 +145,21 @@ export default function ResultPanel({ result, scanning, dark, theme }) {
               />
             </div>
           </div>
+
+          {/* Top-3 alternatif jika confidence rendah */}
+          {result.low_confidence && result.top3?.length > 1 && (
+            <div className={`rounded-lg p-3 ${dark ? "bg-gray-900 border-gray-800" : "bg-gray-50 border-gray-200"} border`}>
+              <p className={`text-[10px] font-bold tracking-widest mb-2 ${confLabel}`}>KEMUNGKINAN LAIN</p>
+              <div className="flex flex-col gap-1.5">
+                {result.top3.slice(1).map((t) => (
+                  <div key={t.lvl2} className="flex justify-between items-center">
+                    <span className={`text-[11px] ${confLabel}`}>{t.lvl2.replace(/_/g," ")}</span>
+                    <span className={`text-[11px] font-bold ${confLabel}`}>{t.confidence.toFixed(1)}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Stat cards */}
           <div className="grid grid-cols-2 gap-3">
@@ -163,8 +185,8 @@ export default function ResultPanel({ result, scanning, dark, theme }) {
             className="result-tip rounded-xl p-4"
             style={{ background: tipBg, border: `1px solid ${tipBorder}` }}
           >
-            <p className={`text-[11px] font-bold ${tipText} tracking-widest mb-2 flex items-center gap-1.5`}>
-              <span>💡</span> Tips Pengelolaan
+            <p className={`text-[11px] font-bold ${tipText} tracking-widest mb-2`}>
+              Tips Pengelolaan
             </p>
             <p className={`text-[13px] ${tipText} leading-relaxed m-0`}>{result.tip}</p>
           </div>
