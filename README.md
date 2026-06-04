@@ -1,6 +1,6 @@
 # TrashTrack — Klasifikasi Sampah Otomatis
 
-Aplikasi web untuk mengenali jenis sampah dari gambar. User tinggal unggah foto atau arahkan webcam, lalu model AI (YOLO) menebak ini sampah apa, masuk kategori mana, harus dibuang ke tempat sampah warna apa, berapa lama terurai, plus tips pengelolaannya.
+Aplikasi web untuk mengenali jenis sampah dari gambar. User tinggal unggah foto atau arahkan webcam, lalu model AI (YOLO) menentukan sampah ini masuk kategori mana, harus dibuang ke tempat sampah warna apa, berapa lama terurai, plus tips pengelolaannya.
 
 Dibuat sebagai proyek UAS Machine Learning.
 
@@ -12,8 +12,8 @@ Dibuat sebagai proyek UAS Machine Learning.
 - [Struktur Folder](#struktur-folder)
 - [Cara Menjalankan](#cara-menjalankan)
 - [Pipeline: Menyiapkan Data & Melatih Model](#pipeline-menyiapkan-data--melatih-model)
-- [Peta Kode (file:baris) per Fitur](#peta-kode-filebaris-per-fitur)
-- [Status & Catatan Penting](#status--catatan-penting)
+- [Peta Kode per Fitur](#peta-kode-per-fitur)
+- [Catatan Penting](#catatan-penting)
 - [Teknologi yang Dipakai](#teknologi-yang-dipakai)
 
 ---
@@ -21,11 +21,11 @@ Dibuat sebagai proyek UAS Machine Learning.
 ## Fitur Utama
 
 - **Unggah foto** → langsung diklasifikasi.
-- **Webcam langsung** → taruh sampah di kotak panduan, sistem melacak ~3 detik lalu otomatis menjepret & klasifikasi.
-- **Klasifikasi bertingkat (hierarki 2 level)** → tentukan kategori besar dulu (anorganik/organik/B3/residu), baru jenis spesifiknya.
+- **Webcam langsung** → taruh sampah di kotak panduan, sistem auto-jepret & klasifikasi.
+- **Klasifikasi 4 kategori** → anorganik, organik, B3, residu.
 - **Info lengkap per sampah** → kategori, warna tempat sampah, lama terurai, dan tips buang yang benar.
-- **Penanda "tidak yakin"** → kalau keyakinan model rendah, user diberi tahu + ditampilkan kemungkinan lain.
-- **Pipeline training built-in** → preprocessing, training penuh, dan fine-tune bisa dijalankan lewat skrip atau GUI.
+- **Penanda "tidak yakin"** → kalau keyakinan model di bawah 20%, user diberi tahu daripada dipaksakan ke kategori yang salah.
+- **TTA (Test-Time Augmentation)** → model dijalankan 5× pada variasi gambar berbeda, hasilnya dirata-rata untuk prediksi yang lebih stabil.
 
 ---
 
@@ -37,14 +37,14 @@ Foto/Webcam (Frontend React)
         ▼
 Backend FastAPI  ──►  Perbaiki kontras (CLAHE)
         │                     │
-        │              Model Level 1 (4 kategori)
-        │                     │
-        │              Model Level 2 + TTA (jenis spesifik)
+        │              Model YOLO11-cls
+        │              (1 model, 4 kategori)
+        │              + TTA (5 variasi)
         ▼
-Hasil JSON (label, kategori, keyakinan, tips) ──► tampil di panel kanan
+Hasil JSON (kategori, keyakinan, tips) ──► tampil di panel kanan
 ```
 
-Model dilatih terpisah lewat folder `pipeline/`, hasilnya disimpan sebagai `model/yolo_best.pt` (Level 2) dan `model/yolo_lvl1.pt` (Level 1), lalu dibaca backend.
+Model dilatih lewat folder `pipeline/`, hasilnya disimpan sebagai `model/yolo_best.pt` dan dibaca backend.
 
 ---
 
@@ -62,16 +62,13 @@ TrashTrack_UI/
 │   ├── package.json
 │   └── vite.config.js       # Proxy /api → localhost:8000
 ├── pipeline/
-│   ├── 1_prapemrosesan.py   # Bersihkan, resize, augmentasi, bagi dataset
-│   ├── 2_pelatihan_yolo.py  # Latih model Level 1 & Level 2 (+ fine-tune)
-│   └── manajer_dataset.py   # GUI untuk tambah data & jalankan training
+│   ├── 1_preprocessing.py   # Bersihkan, resize, augmentasi, bagi dataset
+│   └── 2_training.py        # Latih model YOLO11-cls (+ fine-tune)
 ├── dataset/
-│   ├── raw/{lvl1}/{lvl2}/    # Gambar mentah (sumber kebenaran)
-│   ├── processed/            # Hasil preprocessing (dibuat otomatis)
-│   └── label_mapping.json    # Peta nama kelas ↔ indeks model
+│   ├── raw/{kategori}/      # Gambar mentah per kategori (sumber kebenaran)
+│   └── processed/           # Hasil preprocessing, dibuat otomatis
 └── model/
-    ├── yolo_best.pt         # Model Level 2 (dibaca backend)
-    └── yolo_lvl1.pt         # Model Level 1 (dibaca backend)
+    └── yolo_best.pt         # Model klasifikasi 4 kategori (dibaca backend)
 ```
 
 ---
@@ -86,7 +83,7 @@ uvicorn backend.main:app --reload --port 8000
 ```
 Cek jalan atau tidak: buka `http://localhost:8000/health`.
 
-> Backend butuh `model/yolo_best.pt` dan `dataset/label_mapping.json` ada. Kalau belum, jalankan pipeline dulu (lihat bawah).
+> Backend butuh `model/yolo_best.pt` ada. Kalau belum, jalankan pipeline dulu.
 
 ### 2. Frontend (React + Vite)
 Dari folder `frontend/`:
@@ -100,66 +97,59 @@ Buka alamat yang ditampilkan Vite (biasanya `http://localhost:5173`). Frontend o
 
 ## Pipeline: Menyiapkan Data & Melatih Model
 
-Urutannya: **kumpulkan gambar → preprocessing → training**.
+Urutannya: **taruh gambar → preprocessing → training**.
 
 ### Langkah 1 — Taruh gambar mentah
-Masukkan gambar ke `dataset/raw/{kategori}/{jenis}/`, contoh:
+Masukkan gambar langsung ke folder kategorinya:
 ```
-dataset/raw/anorganik/plastik/000001.jpg
-dataset/raw/organik/kayu/000001.jpg
+dataset/raw/anorganik/000001.jpg
+dataset/raw/organik/000001.jpg
+dataset/raw/b3/000001.jpg
+dataset/raw/residu/000001.jpg
 ```
 
 ### Langkah 2 — Preprocessing
 ```bash
-python pipeline/1_prapemrosesan.py
+python pipeline/1_preprocessing.py
 ```
-Membersihkan gambar rusak/duplikat, resize ke 224×224, augmentasi sampai ~800/kelas, bagi 80/10/10, dan menulis ulang `label_mapping.json`.
+Membersihkan gambar rusak/duplikat (perceptual hash), resize ke 224×224, balance ke 1000 foto per kategori (augmentasi kalau kurang, downsample kalau kebanyakan), lalu bagi 80/10/10 ke `dataset/processed/`.
 
 ### Langkah 3 — Training
-Training penuh dari awal (latih Level 1 + Level 2):
+Training penuh dari awal:
 ```bash
-python pipeline/2_pelatihan_yolo.py
+python pipeline/2_training.py
 ```
-Fine-tune (lanjut dari model lama, lebih cepat — untuk data tambahan):
+Fine-tune dari model yang sudah ada (lebih cepat, untuk data tambahan):
 ```bash
-python pipeline/2_pelatihan_yolo.py --finetune --epochs 30
+python pipeline/2_training.py --finetune --epochs 30
 ```
 
-### Alternatif — GUI
-```bash
-python pipeline/manajer_dataset.py
-```
-Aplikasi jendela untuk memilih gambar, menetapkan kategori, dan menjalankan preprocessing + training dengan tombol (tanpa ketik command).
-
-> Setelah training selesai, **restart backend** supaya model baru termuat (kecuali training dijalankan lewat endpoint `/pipeline/run`, yang otomatis memuat ulang model).
+> Setelah training selesai, **restart backend** supaya model baru termuat (atau jalankan via endpoint `/pipeline/run` yang otomatis reload model).
 
 ---
 
-## Peta Kode (file:baris) per Fitur
+## Peta Kode per Fitur
 
-> Nomor baris bisa sedikit bergeser kalau file diedit. Acuan paling stabil adalah nama fungsinya.
+> Nomor baris bisa sedikit bergeser kalau file diedit. Nama fungsi lebih stabil sebagai acuan.
 
 ### Backend — `backend/main.py`
 | Fitur | Lokasi |
 |------|--------|
-| Konfigurasi path model & mapping | `backend/main.py:36` |
-| Muat 2 model (Level 1 & Level 2) | `backend/main.py:47` |
-| Perbaikan kontras CLAHE | `enhance_image()` — `backend/main.py:68` |
-| Test-Time Augmentation (5 variasi) | `classify_with_tta()` — `backend/main.py:83` |
-| Klasifikasi hierarki Level 1 → Level 2 | `classify_hierarchical()` — `backend/main.py:110` |
-| Database info tiap kelas (label, tips, dll) | `TRASH_INFO` — `backend/main.py:147` |
-| Info cadangan untuk sampah tak dikenal | `_FALLBACK` — `backend/main.py:283` |
-| Endpoint cek status backend | `GET /health` — `backend/main.py:395` |
-| Endpoint klasifikasi utama | `POST /classify` — `backend/main.py:401` |
-| Ambang batas keyakinan (60%) | `CONF_THRESHOLD` — `backend/main.py:40` |
-| Jalankan pipeline dari API (preprocess + train) | `POST /pipeline/run` — `backend/main.py:455` |
-| Cek status & log pipeline | `GET /pipeline/status` — `backend/main.py:477` |
-| Eksekutor pipeline di latar belakang | `_run_pipeline()` — `backend/main.py:320` |
+| Path model & threshold keyakinan | `backend/main.py:9` |
+| Load model YOLO saat backend start | `backend/main.py:21` |
+| Perbaikan kontras CLAHE | `enhance_image()` — `backend/main.py:29` |
+| TTA — jalankan model 5 variasi, rata-rata probabilitas | `classify_with_tta()` — `backend/main.py:39` |
+| Data info tiap kategori (label, warna, tips) | `TRASH_INFO` — `backend/main.py:62` |
+| Fallback untuk sampah tidak dikenali | `_FALLBACK` — `backend/main.py:92` |
+| Endpoint cek status backend | `GET /health` — `backend/main.py:112` |
+| Endpoint klasifikasi utama | `POST /classify` — `backend/main.py:118` |
+| Jalankan pipeline dari API | `POST /pipeline/run` — `backend/main.py:173` |
+| Cek status & log pipeline | `GET /pipeline/status` — `backend/main.py:185` |
 
 ### Frontend — `frontend/src/`
 | Fitur | Lokasi |
 |------|--------|
-| Cek koneksi backend saat dibuka | `frontend/src/App.jsx:22` |
+| Cek koneksi backend saat dibuka | `frontend/src/App.jsx:21` |
 | Kirim gambar ke `/classify` & terima hasil | `handleFile()` — `frontend/src/App.jsx:44` |
 | Simulasi progress bar saat memproses | `startProgressSim()` — `frontend/src/App.jsx:30` |
 | Ganti mode Upload ↔ Webcam | `switchMode()` — `frontend/src/App.jsx:92` |
@@ -167,42 +157,37 @@ Aplikasi jendela untuk memilih gambar, menetapkan kategori, dan menjalankan prep
 | Area drag & drop / pilih file | `frontend/src/components/UploadZone.jsx` |
 | Panel hasil deteksi (kartu, bar, tips) | `frontend/src/components/ResultPanel.jsx` |
 | Deteksi objek webcam (background subtraction) | `findLargestBlob()` — `frontend/src/components/WebcamCapture.jsx:56` |
-| Loop pemrosesan frame webcam | `processFrame()` — `frontend/src/components/WebcamCapture.jsx:274` |
 | Auto-jepret saat objek terkunci 3 detik | `triggerScan()` — `frontend/src/components/WebcamCapture.jsx:235` |
-| Operasi morfologi (bersihkan mask) | `erode()`/`dilate()` — `frontend/src/components/WebcamCapture.jsx:35` |
 
 ### Pipeline — `pipeline/`
 | Fitur | Lokasi |
 |------|--------|
-| Definisi hierarki kelas | `HIERARCHY` — `pipeline/1_prapemrosesan.py:51` |
-| Bangun peta label (`label_mapping.json`) | `build_label_maps()` — `pipeline/1_prapemrosesan.py:72` |
-| Hapus duplikat (hash MD5) | `get_hash()` — `pipeline/1_prapemrosesan.py:100` |
-| Bersihkan file rusak & duplikat | `clean_subclass()` — `pipeline/1_prapemrosesan.py:109` |
-| Resep augmentasi gambar | `aug_pipeline` — `pipeline/1_prapemrosesan.py:163` |
-| Resize + augmentasi + split | `prepare_all()` — `pipeline/1_prapemrosesan.py:225` |
-| Grafik distribusi dataset | `visualize()` — `pipeline/1_prapemrosesan.py:301` |
-| Siapkan dataset Level 2 (format YOLO) | `prepare_yolo_dataset()` — `pipeline/2_pelatihan_yolo.py:60` |
-| Siapkan dataset Level 1 | `prepare_yolo_lvl1_dataset()` — `pipeline/2_pelatihan_yolo.py:95` |
-| Latih model Level 1 (4 kelas) | `train_yolo_lvl1()` — `pipeline/2_pelatihan_yolo.py:128` |
-| Latih model Level 2 (kelas spesifik) | `train_yolo()` — `pipeline/2_pelatihan_yolo.py:161` |
-| Fine-tune dari model lama | `finetune_yolo()` — `pipeline/2_pelatihan_yolo.py:197` |
-| Evaluasi akurasi (Top-1 & Top-5) | `evaluate_yolo()` — `pipeline/2_pelatihan_yolo.py:251` |
-| Pengaturan training (epoch, batch, device) | `pipeline/2_pelatihan_yolo.py:42` |
+| Daftar 4 kategori | `CATEGORIES` — `pipeline/1_preprocessing.py:33` |
+| Fingerprint foto (perceptual hash / dHash) | `get_phash()` — `pipeline/1_preprocessing.py:50` |
+| Bersihkan file rusak & duplikat per kategori | `clean_category()` — `pipeline/1_preprocessing.py:60` |
+| Config augmentasi gambar | `aug_pipeline` — `pipeline/1_preprocessing.py:88` |
+| Resize + balance + split dataset | `prepare_all()` — `pipeline/1_preprocessing.py:138` |
+| Grafik distribusi 4 kategori | `visualize()` — `pipeline/1_preprocessing.py:193` |
+| Siapkan dataset YOLO (balance per kategori) | `prepare_dataset()` — `pipeline/2_training.py:31` |
+| Training penuh YOLO11l-cls | `train_yolo()` — `pipeline/2_training.py:72` |
+| Fine-tune dari model yang sudah ada | `finetune_yolo()` — `pipeline/2_training.py:98` |
+| Evaluasi akurasi Top-1 | `evaluate_yolo()` — `pipeline/2_training.py:130` |
 
 ---
 
-## Status & Catatan Penting
+## Catatan Penting
 
-- **Jumlah kelas: 18 jenis (Level 2) di bawah 4 kategori (Level 1).** Pakaian, sepatu, tas, dan topi semuanya digabung dalam satu kelas `tekstil` — tidak dipecah, supaya cocok dengan dataset & model yang sudah dilatih.
-- **Training butuh GPU.** Pengaturan default memakai `DEVICE = "0"` (GPU NVIDIA). Ubah ke `"cpu"` di `pipeline/2_pelatihan_yolo.py:46` jika tanpa GPU (akan jauh lebih lambat).
-- **TTA menambah beban.** Tiap klasifikasi menjalankan model 5× (untuk akurasi). Kalau butuh lebih cepat, ini bisa dipangkas.
+- **4 kategori:** anorganik (kuning), organik (hijau), B3 (merah), residu (abu-abu). Klasifikasi langsung satu level, tidak ada hierarki.
+- **Threshold keyakinan:** di bawah 20% → tidak diklasifikasikan, user diminta foto ulang. Di bawah 60% → hasil ditampilkan tapi diberi tanda "kurang yakin".
+- **Training butuh GPU.** Default `DEVICE = "0"` (GPU NVIDIA). Ganti ke `"cpu"` di `pipeline/2_training.py:22` kalau tanpa GPU.
+- **TTA menambah beban.** Tiap klasifikasi menjalankan model 5×. Kalau butuh lebih cepat bisa dikurangi di `classify_with_tta()`.
 - **Kotak di webcam bukan output AI.** Itu hasil deteksi gerakan (background subtraction) yang dikode manual, hanya untuk memicu auto-jepret.
 
 ---
 
 ## Teknologi yang Dipakai
 
-**Backend:** Python, FastAPI, Uvicorn, Ultralytics YOLO11, OpenCV, Pillow, NumPy.
-**Frontend:** React 19, Vite, Tailwind CSS.
-**Model:** YOLO11-cls (klasifikasi), transfer learning dari bobot pretrained ImageNet.
-**Pipeline:** Albumentations (augmentasi), scikit-learn, Matplotlib, tqdm.
+**Backend:** Python, FastAPI, Uvicorn, Ultralytics YOLO11, OpenCV, Pillow, NumPy.  
+**Frontend:** React 19, Vite, Tailwind CSS.  
+**Model:** YOLO11l-cls (klasifikasi), transfer learning dari bobot pretrained ImageNet.  
+**Pipeline:** Albumentations (augmentasi), Matplotlib, tqdm.
