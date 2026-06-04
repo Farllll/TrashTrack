@@ -29,8 +29,7 @@ ROOT_DIR = Path(__file__).parent.parent.resolve()
 RAW_DIR  = ROOT_DIR / "dataset" / "raw"
 
 HIERARCHY = {
-    "anorganik": ["kaca", "karet", "logam", "styrofoam", "kardus", "plastik",
-                  "sepatu", "pakaian", "topi", "tas"],
+    "anorganik": ["kaca", "karet", "logam", "styrofoam", "kardus", "plastik", "tekstil"],
     "organik"  : ["ampas", "kayu", "daun_ranting", "kertas_tisu"],
     "b3"       : ["baterai", "elektronik", "lampu_merkuri", "medis", "kimia"],
     "residu"   : ["popok_pembalut", "puntung_rokok"],

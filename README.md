@@ -193,9 +193,7 @@ Aplikasi jendela untuk memilih gambar, menetapkan kategori, dan menjalankan prep
 
 ## Status & Catatan Penting
 
-- **Hierarki kelas sedang transisi.** Kode (`TRASH_INFO` di backend dan `HIERARCHY` di pipeline) sudah disiapkan untuk **21 kelas** — kelas `tekstil` lama dipecah jadi `sepatu`, `pakaian`, `topi`, `tas`. **Tetapi** `dataset/label_mapping.json` dan model terlatih (`yolo_best.pt`) yang ada sekarang **masih versi lama (18 kelas, dengan `tekstil`)**.
-  → Supaya 4 kelas baru benar-benar aktif, **dataset harus dipreprocess + model dilatih ulang** (Langkah 2 & 3 di atas). Sebelum itu, prediksi `tekstil` dari model lama akan jatuh ke info cadangan.
-- **Data 4 kelas baru terbatas.** Berasal dari pemecahan ~714 gambar tekstil, ditambal augmentasi. Untuk akurasi serius perlu lebih banyak data asli.
+- **Jumlah kelas: 18 jenis (Level 2) di bawah 4 kategori (Level 1).** Pakaian, sepatu, tas, dan topi semuanya digabung dalam satu kelas `tekstil` — tidak dipecah, supaya cocok dengan dataset & model yang sudah dilatih.
 - **Training butuh GPU.** Pengaturan default memakai `DEVICE = "0"` (GPU NVIDIA). Ubah ke `"cpu"` di `pipeline/2_pelatihan_yolo.py:46` jika tanpa GPU (akan jauh lebih lambat).
 - **TTA menambah beban.** Tiap klasifikasi menjalankan model 5× (untuk akurasi). Kalau butuh lebih cepat, ini bisa dipangkas.
 - **Kotak di webcam bukan output AI.** Itu hasil deteksi gerakan (background subtraction) yang dikode manual, hanya untuk memicu auto-jepret.

@@ -2,7 +2,7 @@
 ====================================================
   SKRIP 2: PELATIHAN KLASIFIKASI YOLO
   ─────────────────────────────────────────────────
-  Latih YOLO classifier untuk klasifikasi sampah 21 kelas.
+  Latih YOLO classifier untuk klasifikasi sampah 18 kelas.
 
   Alur:
     Langkah 1 – Ratakan dataset ke format YOLO cls (hapus layer lvl1)
@@ -32,7 +32,7 @@ ROOT_DIR = Path(__file__).parent.parent.resolve()   # → TrashTrack_UI/
 #  KONFIGURASI
 # ─────────────────────────────────────────────────
 PROCESSED_DIR  = ROOT_DIR / "dataset" / "processed"
-YOLO_DIR       = ROOT_DIR / "dataset" / "yolo_cls"       # Level 2 (21 kelas)
+YOLO_DIR       = ROOT_DIR / "dataset" / "yolo_cls"       # Level 2 (18 kelas)
 YOLO_LVL1_DIR  = ROOT_DIR / "dataset" / "yolo_cls_lvl1"  # Level 1 (4 kelas)
 MAPPING_PATH   = ROOT_DIR / "dataset" / "label_mapping.json"
 MODEL_DIR      = ROOT_DIR / "model"
@@ -55,7 +55,7 @@ print(f"  Level 2 : {mapping['lvl2_classes']}")
 
 
 # ─────────────────────────────────────────────────
-#  STEP 1A: DATASET LEVEL 2 (21 kelas)
+#  STEP 1A: DATASET LEVEL 2 (18 kelas)
 # ─────────────────────────────────────────────────
 def prepare_yolo_dataset():
     """
@@ -64,7 +64,7 @@ def prepare_yolo_dataset():
     buang layer kategori besar (lvl1), sisakan langsung folder per jenis (lvl2).
     Contoh: processed/anorganik/plastik → yolo_cls/plastik.
     """
-    print("\n[PREP-L2] Dataset Level 2 (21 kelas)...")
+    print("\n[PREP-L2] Dataset Level 2 (18 kelas)...")
     if YOLO_DIR.exists():
         shutil.rmtree(YOLO_DIR)
 
@@ -156,15 +156,15 @@ def train_yolo_lvl1():
 
 
 # ─────────────────────────────────────────────────
-#  STEP 2B: TRAINING LEVEL 2 (21 kelas — utama)
+#  STEP 2B: TRAINING LEVEL 2 (18 kelas — utama)
 # ─────────────────────────────────────────────────
 def train_yolo():
     """
-    Latih model "detail" (Level 2) yang nebak jenis spesifik sampah (21 kelas).
+    Latih model "detail" (Level 2) yang nebak jenis spesifik sampah (18 kelas).
     Ini model utama yang dibaca backend. Pakai versi YOLO terbesar (paling akurat)
-    karena tugasnya paling berat — bedain plastik vs kaca vs sepatu, dst.
+    karena tugasnya paling berat — bedain plastik vs kaca vs tekstil, dst.
     """
-    print("\n[TRAIN-L2] Level 2 — 21 kelas, model yolo11x (terbesar, paling akurat)...")
+    print("\n[TRAIN-L2] Level 2 — 18 kelas, model yolo11x (terbesar, paling akurat)...")
     print(f"  Model  : yolo11x-cls.pt (79.9% ImageNet Top-1)")
     print(f"  Epochs : {EPOCHS}  |  Batch: {BATCH}  |  Device: {DEVICE}")
 
@@ -295,7 +295,7 @@ if __name__ == "__main__":
     else:
         print("=" * 60)
         print("  PELATIHAN HIERARKI YOLO — DETEKSI SAMPAH")
-        print("  Level 1: 4 kelas  |  Level 2: 21 kelas")
+        print("  Level 1: 4 kelas  |  Level 2: 18 kelas")
         print("=" * 60)
 
         # Siapkan kedua dataset

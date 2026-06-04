@@ -49,8 +49,7 @@ SPLIT      = {"train": 0.80, "val": 0.10, "test": 0.10}
 TARGET_PER_SUBCLASS = 800
 
 HIERARCHY = {
-    "anorganik": ["kaca", "karet", "logam", "styrofoam", "kardus", "plastik",
-                  "sepatu", "pakaian", "topi", "tas"],
+    "anorganik": ["kaca", "karet", "logam", "styrofoam", "kardus", "plastik", "tekstil"],
     "organik"  : ["ampas", "kayu", "daun_ranting", "kertas_tisu"],
     "b3"       : ["baterai", "elektronik", "lampu_merkuri", "medis", "kimia"],
     "residu"   : ["popok_pembalut", "puntung_rokok"],

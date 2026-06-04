@@ -35,7 +35,7 @@ from ultralytics import YOLO
 #  KONFIGURASI
 # ─────────────────────────────────────────────────
 ROOT_DIR        = Path(__file__).parent.parent.resolve()
-MODEL_PATH      = ROOT_DIR / "model" / "yolo_best.pt"     # Level 2 (kelas spesifik)
+MODEL_PATH      = ROOT_DIR / "model" / "yolo_best.pt"     # Level 2 (18 kelas spesifik)
 LVL1_MODEL_PATH = ROOT_DIR / "model" / "yolo_lvl1.pt"     # Level 1 (4 kategori)
 MAPPING_PATH    = ROOT_DIR / "dataset" / "label_mapping.json"
 CONF_THRESHOLD  = 60.0    # di bawah nilai ini, prediksi ditandai kurang yakin
@@ -142,7 +142,7 @@ def classify_hierarchical(img: Image.Image) -> tuple[str, float, str, float]:
 
 
 # ─────────────────────────────────────────────────
-#  INFORMASI TIAP KELAS (4 kategori · 21 jenis sampah)
+#  INFORMASI TIAP KELAS (4 kategori · 18 jenis sampah)
 # ─────────────────────────────────────────────────
 TRASH_INFO: dict[str, dict] = {
     # ── ANORGANIK ──────────────────────────────────
@@ -182,29 +182,11 @@ TRASH_INFO: dict[str, dict] = {
         "tip": "Periksa kode daur ulang di bawah kemasan (segitiga berangka 1 sampai 7). "
                "Bersihkan dari sisa makanan sebelum dibuang ke bank sampah.",
     },
-    "sepatu": {
-        "label": "Sepatu", "code": "ANO-07", "category": "Anorganik",
-        "decompose": "25–40 tahun",   "bin": "Kuning", "binHex": "#F59E0B",
-        "tip": "Sepatu yang masih layak pakai bisa didonasikan. Sepatu rusak berbahan campuran "
-               "sulit didaur ulang, jadi setor ke bank sampah atau titik pengumpulan tekstil.",
-    },
-    "pakaian": {
-        "label": "Pakaian", "code": "ANO-08", "category": "Anorganik",
+    "tekstil": {
+        "label": "Tekstil / Pakaian", "code": "ANO-07", "category": "Anorganik",
         "decompose": "1–5 tahun",     "bin": "Kuning", "binHex": "#F59E0B",
-        "tip": "Pakaian yang masih layak pakai sebaiknya didonasikan ke panti asuhan atau bank pakaian. "
-               "Pakaian tidak layak bisa dijadikan kain lap atau disetor ke daur ulang tekstil.",
-    },
-    "topi": {
-        "label": "Topi", "code": "ANO-09", "category": "Anorganik",
-        "decompose": "1–5 tahun",     "bin": "Kuning", "binHex": "#F59E0B",
-        "tip": "Topi berbahan kain bisa didonasikan selama masih layak. "
-               "Topi dengan rangka plastik atau logam perlu dipisahkan dulu sebelum didaur ulang.",
-    },
-    "tas": {
-        "label": "Tas", "code": "ANO-10", "category": "Anorganik",
-        "decompose": "5–20 tahun",    "bin": "Kuning", "binHex": "#F59E0B",
-        "tip": "Tas yang masih layak pakai bisa didonasikan. Tas berbahan kulit sintetis sulit terurai, "
-               "jadi setor ke bank sampah atau titik pengumpulan tekstil terdekat.",
+        "tip": "Pakaian, sepatu, tas, dan topi yang masih layak pakai sebaiknya didonasikan. "
+               "Yang sudah tidak layak bisa dijadikan kain lap atau disetor ke daur ulang tekstil.",
     },
 
     # ── ORGANIK ────────────────────────────────────
