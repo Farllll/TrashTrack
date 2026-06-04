@@ -12,7 +12,6 @@ frontend/dist/
 # Pretrained YOLO base models (auto-download)
 *.pt
 !model/yolo_best.pt
-!model/yolo_lvl1.pt
 
 # Dataset — file mentah besar & hasil generate pipeline, jangan di-commit
 dataset/raw/
@@ -20,12 +19,14 @@ dataset/processed/
 dataset/yolo_cls/
 dataset/yolo_cls_lvl1/
 dataset/temp/
+dataset/_review/
 dataset/trashnet.zip
 dataset/trashnet_raw/
 dataset/distribusi_dataset.png
 
 # YOLO training run folders (generated otomatis saat training)
 model/yolo_classifier*/
+model/yolo_kategori*/
 model/yolo_finetune/
 model/yolo_lvl1/
 
