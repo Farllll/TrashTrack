@@ -72,8 +72,9 @@ export default function UploadZone({ image, scanning, scanPct, onFile, onReset, 
         onClick={() => !image && inputRef.current?.click()}
         onDrop={handleDrop}
         onDragOver={(e) => e.preventDefault()}
+        style={{ aspectRatio: "4/3" }}
         className={[
-          `relative rounded-xl min-h-48 md:min-h-65 flex items-center justify-center overflow-hidden transition-all duration-200 ${zoneBg}`,
+          `relative rounded-xl w-full flex items-center justify-center overflow-hidden transition-all duration-200 ${zoneBg}`,
           image
             ? `border ${zoneBorder} cursor-default`
             : `border border-dashed ${zoneBorder} cursor-pointer ${zoneHover}`,
@@ -98,12 +99,12 @@ export default function UploadZone({ image, scanning, scanPct, onFile, onReset, 
         )}
 
         {image && (
-          <div className="relative w-full">
+          <div className="absolute inset-0">
             <img
               ref={imgRef}
               src={image}
               alt="Preview"
-              className="w-full h-48 md:h-70 object-cover block"
+              className="w-full h-full object-cover block"
               onLoad={handleImgLoad}
             />
 

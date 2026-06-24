@@ -2,33 +2,33 @@ import sys
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
-import os, shutil, random
+import shutil, random
 from pathlib import Path
-from collections import defaultdict
 
-import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 from tqdm import tqdm
-import albumentations as A
+from ultralytics import FastSAM
 
 ROOT_DIR = Path(__file__).parent.parent.resolve()
 
 # ─────────────────────────────────────────────────
 #  KONFIGURASI
 # ─────────────────────────────────────────────────
-RAW_DIR    = ROOT_DIR / "dataset" / "raw"
-OUT_DIR    = ROOT_DIR / "dataset" / "processed"
-TEMP_DIR   = ROOT_DIR / "dataset" / "temp"
+RAW_DIR  = ROOT_DIR / "dataset" / "raw"
+SEG_DIR  = ROOT_DIR / "dataset" / "yolo_seg"   # dataset siap-latih format YOLO-seg
 
-IMG_SIZE   = (224, 224)
-SEED       = 42
-SPLIT      = {"train": 0.80, "val": 0.10, "test": 0.10}
-TARGET_PER_CLASS = 1000
+SEED   = 42
+SPLIT  = {"train": 0.80, "val": 0.10, "test": 0.10}
+DEVICE = "0"   # ganti "cpu" kalau nggak ada GPU
 
 CATEGORIES = ["anorganik", "organik", "b3", "residu"]
+
+# batas area mask (proporsi terhadap frame) — di luar range ini dianggap bukan objek utama
+MIN_AREA = 0.02   # terlalu kecil = noise
+MAX_AREA = 0.90   # terlalu besar = kemungkinan background
 
 COLORS = {
     "anorganik": "#2196F3",
@@ -99,141 +99,165 @@ def clean_all():
 
 
 # ─────────────────────────────────────────────────
-#  STEP 2: AUGMENTASI
+#  STEP 2: AUTO-ANNOTATION (FastSAM)
 # ─────────────────────────────────────────────────
-# augmentation config — tiap foto dibikin beberapa variasi (rotate, gelap, blur, dll)
-# biar model nggak overfitting. p = probabilitas efek dipakai.
-aug_pipeline = A.Compose([
-    A.HorizontalFlip(p=0.5),
-    A.Rotate(limit=30, p=0.7),
-    A.Perspective(scale=(0.05, 0.15), p=0.5),
+# FastSAM dipakai SEKALI di sini untuk bikin label segmentasi otomatis.
+# Kelas tiap foto sudah ketahuan dari nama foldernya, jadi FastSAM cuma perlu
+# nyari DI MANA objeknya (mask), bukan APA objeknya.
+_sam = None
 
-    A.RandomBrightnessContrast(brightness_limit=0.4, contrast_limit=0.4, p=0.7),
-    A.HueSaturationValue(hue_shift_limit=20, sat_shift_limit=40, val_shift_limit=30, p=0.5),
-    A.RandomGamma(gamma_limit=(60, 140), p=0.4),
-    A.CLAHE(clip_limit=4.0, p=0.3),
+def load_sam():
+    global _sam
+    if _sam is None:
+        print("  Load FastSAM-s.pt (auto-download kalau belum ada)...")
+        _sam = FastSAM("FastSAM-s.pt")
+    return _sam
 
-    A.OneOf([
-        A.Blur(blur_limit=5, p=1.0),
-        A.MotionBlur(blur_limit=7, p=1.0),
-        A.GaussianBlur(blur_limit=5, p=1.0),
-    ], p=0.4),
-
-    A.GaussNoise(std_range=(0.05, 0.20), p=0.4),
-    A.ImageCompression(quality_range=(60, 95), p=0.3),
-
-    A.CoarseDropout(
-        num_holes_range=(1, 6),
-        hole_height_range=(10, 40),
-        hole_width_range=(10, 40),
-        p=0.4
-    ),
-
-    A.RandomResizedCrop(size=(224, 224), scale=(0.6, 1.0), ratio=(0.75, 1.33), p=0.4),
-])
-
-def resize_save(src: Path, dst: Path):
-    # Resize foto ke 224x224 dan simpan
+def annotate_image(path: Path, cls_id: int) -> str | None:
+    # Jalankan FastSAM ke satu foto, ambil mask objek utama,
+    # return satu baris label format YOLO-seg ("cls x1 y1 x2 y2 ...") atau None kalau gagal
+    model = load_sam()
     try:
-        img = Image.open(src).convert("RGB").resize(IMG_SIZE, Image.LANCZOS)
-        img.save(dst, "JPEG", quality=90)
-    except Exception as e:
-        print(f"  Gagal memproses {src.name}: {e}")
+        res = model(str(path), device=DEVICE, retina_masks=True, imgsz=640,
+                    conf=0.4, iou=0.9, verbose=False)[0]
+    except Exception:
+        return None
 
-def augment_image(src: Path, out_dir: Path, n: int):
-    # Dari 1 foto asli, bikin n variasi baru pakai aug_pipeline
-    img = cv2.imread(str(src))
-    if img is None: return
-    img = cv2.cvtColor(cv2.resize(img, IMG_SIZE), cv2.COLOR_BGR2RGB)
-    for i in range(n):
-        aug = aug_pipeline(image=img)["image"]
-        Image.fromarray(aug).save(out_dir / f"{src.stem}_aug{i}.jpg", quality=90)
+    if res.masks is None or len(res.masks) == 0:
+        return None
+
+    # Hitung proporsi area tiap mask terhadap frame, lalu filter yang masuk akal
+    data = res.masks.data.cpu().numpy()            # (N, H, W)
+    frame_area = data.shape[1] * data.shape[2]
+    fracs = data.sum(axis=(1, 2)) / frame_area
+
+    candidates = [i for i, fr in enumerate(fracs) if MIN_AREA <= fr <= MAX_AREA]
+    if not candidates:
+        return None
+
+    # Objek utama = mask valid dengan area terbesar
+    best = max(candidates, key=lambda i: fracs[i])
+    polygon = res.masks.xyn[best]                  # polygon ternormalisasi (P, 2)
+    if polygon is None or len(polygon) < 3:
+        return None
+
+    coords = " ".join(f"{min(max(x,0),1):.4f} {min(max(y,0),1):.4f}" for x, y in polygon)
+    return f"{cls_id} {coords}"
+
+def annotate_all(cleaned: dict) -> dict:
+    # Anotasi semua foto. Return {kategori: [(path, label_line), ...]}
+    print("\n[STEP 2] Auto-annotation dengan FastSAM...")
+    annotated = {}
+    for cls_id, kategori in enumerate(CATEGORIES):
+        items, skipped = [], 0
+        for p in tqdm(cleaned[kategori], desc=f"  Annotate {kategori}", leave=False):
+            label = annotate_image(p, cls_id)
+            if label:
+                items.append((p, label))
+            else:
+                skipped += 1
+        annotated[kategori] = items
+        print(f"  [{kategori:<12}] Teranotasi: {len(items):>4} | Gagal/di-skip: {skipped}")
+    return annotated
 
 
 # ─────────────────────────────────────────────────
-#  STEP 3: RESIZE + AUGMENTASI + SPLIT
+#  STEP 3: SPLIT + TULIS DATASET YOLO-SEG
 # ─────────────────────────────────────────────────
-def prepare_all(cleaned: dict):
-    # Resize semua foto, balance ke 800 per kategori (kurang → augmentasi, kebanyakan → downsample), lalu split 80/10/10
-    if OUT_DIR.exists():
-        shutil.rmtree(OUT_DIR)
-    print("\n[STEP 2] Resize + Augmentasi...")
-    TEMP_DIR.mkdir(parents=True, exist_ok=True)
-
-    for kategori, paths in cleaned.items():
-        tmp = TEMP_DIR / kategori
-        tmp.mkdir(parents=True, exist_ok=True)
-
-        for p in tqdm(paths, desc=f"  Resize {kategori}", leave=False):
-            resize_save(p, tmp / p.name)
-
-        n_existing = len(list(tmp.glob("*.jpg")))
-
-        if n_existing > TARGET_PER_CLASS:
-            semua = list(tmp.glob("*.jpg"))
-            random.shuffle(semua)
-            for p in semua[TARGET_PER_CLASS:]:
-                p.unlink()
-            print(f"  [{kategori}] Downsample {n_existing} → {TARGET_PER_CLASS}")
-
-        elif n_existing < TARGET_PER_CLASS:
-            needed   = TARGET_PER_CLASS - n_existing
-            sources  = list(tmp.glob("*.jpg"))
-            if not sources:
-                print(f"  [{kategori}] Tidak ada foto, dilewati")
-                continue
-            aug_each = max(1, needed // len(sources))
-            extra    = needed - aug_each * len(sources)
-            print(f"  [{kategori}] Augmentasi +{needed} foto (×{aug_each} per foto)")
-            for i, src in enumerate(tqdm(sources, desc=f"  Augment {kategori}", leave=False)):
-                augment_image(src, tmp, aug_each + (1 if i < extra else 0))
-
-        total = len(list(tmp.glob("*.jpg")))
-        print(f"  [{kategori}] Total sebelum split: {total} (target {TARGET_PER_CLASS})")
-
+def build_dataset(annotated: dict):
+    # Bagi 80/10/10 lalu tulis images/ + labels/ + data.yaml
     print("\n[STEP 3] Split train/val/test...")
+    if SEG_DIR.exists():
+        shutil.rmtree(SEG_DIR)
+    for split in SPLIT:
+        (SEG_DIR / "images" / split).mkdir(parents=True, exist_ok=True)
+        (SEG_DIR / "labels" / split).mkdir(parents=True, exist_ok=True)
 
-    stats = defaultdict(dict)
+    stats = {split: {} for split in SPLIT}
 
-    for kategori in CATEGORIES:
-        imgs = list((TEMP_DIR / kategori).glob("*.jpg")) if (TEMP_DIR / kategori).exists() else []
-        random.shuffle(imgs)
-
-        n      = len(imgs)
+    for kategori, items in annotated.items():
+        random.shuffle(items)
+        n      = len(items)
         n_test = int(n * SPLIT["test"])
         n_val  = int(n * SPLIT["val"])
 
         splits_data = {
-            "test" : imgs[:n_test],
-            "val"  : imgs[n_test:n_test + n_val],
-            "train": imgs[n_test + n_val:],
+            "test" : items[:n_test],
+            "val"  : items[n_test:n_test + n_val],
+            "train": items[n_test + n_val:],
         }
 
-        for split, split_imgs in splits_data.items():
-            dst = OUT_DIR / split / kategori
-            dst.mkdir(parents=True, exist_ok=True)
-            for p in split_imgs:
-                if p.exists():
-                    shutil.copy2(p, dst / p.name)
-                else:
-                    print(f"  [WARN] File hilang, dilewati: {p.name}")
-            stats[split][kategori] = len(split_imgs)
+        for split, sub in splits_data.items():
+            for j, (src, label) in enumerate(sub):
+                stem = f"{kategori}_{split}_{j:06d}"
+                shutil.copy2(src, SEG_DIR / "images" / split / f"{stem}.jpg")
+                (SEG_DIR / "labels" / split / f"{stem}.txt").write_text(label + "\n")
+            stats[split][kategori] = len(sub)
 
         print(f"  [{kategori}] train={len(splits_data['train'])} | val={len(splits_data['val'])} | test={len(splits_data['test'])}")
 
-    shutil.rmtree(TEMP_DIR)
-    print("\n  Split selesai.")
+    # data.yaml — dibaca YOLO saat training
+    names = "\n".join(f"  {i}: {k}" for i, k in enumerate(CATEGORIES))
+    yaml_text = (
+        f"path: {SEG_DIR.as_posix()}\n"
+        "train: images/train\n"
+        "val: images/val\n"
+        "test: images/test\n\n"
+        f"names:\n{names}\n"
+    )
+    (SEG_DIR / "data.yaml").write_text(yaml_text, encoding="utf-8")
+    print(f"\n  data.yaml ditulis: {SEG_DIR / 'data.yaml'}")
     return stats
 
 
 # ─────────────────────────────────────────────────
-#  STEP 4: VISUALISASI
+#  STEP 4: PREVIEW ANOTASI
+# ─────────────────────────────────────────────────
+def preview_annotations(annotated: dict, n: int = 12):
+    # Simpan grid foto + overlay polygon ke cek_anotasi.png — cek mata dulu sebelum training
+    print("\n[STEP 4] Bikin preview anotasi...")
+    samples = []
+    for kategori, items in annotated.items():
+        samples += [(kategori, p, label) for p, label in items]
+    if not samples:
+        print("  Tidak ada sample untuk preview")
+        return
+    random.shuffle(samples)
+    samples = samples[:n]
+
+    cols = 4
+    rows = (len(samples) + cols - 1) // cols
+    fig, axes = plt.subplots(rows, cols, figsize=(4 * cols, 4 * rows))
+    axes = np.atleast_1d(axes).flatten()
+
+    for ax, (kategori, p, label) in zip(axes, samples):
+        img = np.array(Image.open(p).convert("RGB"))
+        h, w = img.shape[:2]
+        vals = label.split()[1:]
+        poly = np.array(vals, dtype=float).reshape(-1, 2) * [w, h]
+        ax.imshow(img)
+        ax.add_patch(plt.Polygon(poly, closed=True, fill=True,
+                                 facecolor=COLORS[kategori], alpha=0.35,
+                                 edgecolor=COLORS[kategori], linewidth=2))
+        ax.set_title(kategori, fontsize=10, color=COLORS[kategori])
+        ax.axis("off")
+    for ax in axes[len(samples):]:
+        ax.axis("off")
+
+    plt.tight_layout()
+    out = ROOT_DIR / "dataset" / "cek_anotasi.png"
+    plt.savefig(out, dpi=120)
+    plt.close()
+    print(f"  Preview disimpan: {out} — CEK DULU sebelum training!")
+
+
+# ─────────────────────────────────────────────────
+#  STEP 5: VISUALISASI DISTRIBUSI
 # ─────────────────────────────────────────────────
 def visualize(stats: dict):
     # Bikin grafik sebaran 4 kategori dan simpan ke distribusi_dataset.png
-    print("\n[STEP 4] Visualisasi distribusi...")
+    print("\n[STEP 5] Visualisasi distribusi...")
 
-    labels       = CATEGORIES
     train_counts = [stats["train"].get(k, 0) for k in CATEGORIES]
     val_counts   = [stats["val"].get(k, 0)   for k in CATEGORIES]
     test_counts  = [stats["test"].get(k, 0)  for k in CATEGORIES]
@@ -276,7 +300,6 @@ def visualize(stats: dict):
     ax2.set_title("Proporsi Kategori")
 
     plt.tight_layout()
-    (ROOT_DIR / "dataset").mkdir(exist_ok=True)
     plt.savefig(ROOT_DIR / "dataset" / "distribusi_dataset.png", dpi=150)
     plt.close()
     print("  Grafik disimpan: dataset/distribusi_dataset.png")
@@ -288,7 +311,7 @@ def visualize(stats: dict):
 def print_summary(stats: dict):
     # Tampilkan total foto per split dan status siap training atau belum
     print("\n" + "=" * 50)
-    print("  RINGKASAN DATASET")
+    print("  RINGKASAN DATASET (YOLO-SEG)")
     print("=" * 50)
     grand = 0
     for split in ["train", "val", "test"]:
@@ -305,10 +328,12 @@ def print_summary(stats: dict):
 # ─────────────────────────────────────────────────
 if __name__ == "__main__":
     print("=" * 50)
-    print("  DATASET PREPROCESSING")
+    print("  DATASET PREPROCESSING — AUTO-ANNOTATION SEG")
     print("=" * 50)
 
-    cleaned = clean_all()
-    stats   = prepare_all(cleaned)
+    cleaned   = clean_all()
+    annotated = annotate_all(cleaned)
+    stats     = build_dataset(annotated)
+    preview_annotations(annotated)
     visualize(stats)
     print_summary(stats)

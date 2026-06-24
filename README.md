@@ -1,6 +1,6 @@
 # TrashTrack — Klasifikasi Sampah Otomatis
 
-Aplikasi web untuk mengenali jenis sampah dari gambar. User tinggal unggah foto atau arahkan webcam, lalu model AI (YOLO) menentukan sampah ini masuk kategori mana, harus dibuang ke tempat sampah warna apa, berapa lama terurai, plus tips pengelolaannya.
+Aplikasi web untuk mengenali jenis sampah dari gambar. User tinggal unggah foto atau arahkan webcam, lalu model AI (YOLO segmentasi) mendeteksi objek sampahnya, menentukan kategorinya, harus dibuang ke tempat sampah warna apa, berapa lama terurai, plus tips pengelolaannya.
 
 Dibuat sebagai proyek UAS Machine Learning.
 
@@ -20,12 +20,13 @@ Dibuat sebagai proyek UAS Machine Learning.
 
 ## Fitur Utama
 
-- **Unggah foto** → langsung diklasifikasi.
+- **Unggah foto** → langsung dideteksi & diklasifikasi.
 - **Webcam langsung** → taruh sampah di kotak panduan, sistem auto-jepret & klasifikasi.
-- **Klasifikasi 4 kategori** → anorganik, organik, B3, residu.
+- **Model segmentasi (YOLO11-seg)** → model belajar AREA objek sampahnya saja, jadi background otomatis diabaikan — tidak perlu hapus background manual.
+- **4 kategori** → anorganik, organik, B3, residu.
 - **Info lengkap per sampah** → kategori, warna tempat sampah, lama terurai, dan tips buang yang benar.
-- **Penanda "tidak yakin"** → kalau keyakinan model di bawah 20%, user diberi tahu daripada dipaksakan ke kategori yang salah.
-- **TTA (Test-Time Augmentation)** → model dijalankan 5× pada variasi gambar berbeda, hasilnya dirata-rata untuk prediksi yang lebih stabil.
+- **Penanda "tidak yakin"** → kalau tidak ada objek terdeteksi atau confidence di bawah 20%, user diberi tahu daripada dipaksakan ke kategori yang salah.
+- **Auto-annotation** → label segmentasi dataset di-generate otomatis pakai FastSAM, tanpa anotasi manual.
 
 ---
 
@@ -37,14 +38,16 @@ Foto/Webcam (Frontend React)
         ▼
 Backend FastAPI  ──►  Perbaiki kontras (CLAHE)
         │                     │
-        │              Model YOLO11-cls
-        │              (1 model, 4 kategori)
-        │              + TTA (5 variasi)
+        │              Model YOLO11-seg
+        │              (deteksi + segmentasi, 4 kategori)
+        │              → ambil objek dengan confidence tertinggi
         ▼
 Hasil JSON (kategori, keyakinan, tips) ──► tampil di panel kanan
 ```
 
 Model dilatih lewat folder `pipeline/`, hasilnya disimpan sebagai `model/yolo_best.pt` dan dibaca backend.
+
+**Kenapa segmentasi, bukan klasifikasi biasa?** Classifier melihat SELURUH gambar — termasuk background — jadi bisa "nyontek" dari meja/lantai di foto training. Model segmentasi cuma belajar dari area objeknya, jadi lebih tahan terhadap background yang berbeda-beda saat scan kamera.
 
 ---
 
@@ -62,13 +65,13 @@ TrashTrack_UI/
 │   ├── package.json
 │   └── vite.config.js       # Proxy /api → localhost:8000
 ├── pipeline/
-│   ├── 1_preprocessing.py   # Bersihkan, resize, augmentasi, bagi dataset
-│   └── 2_training.py        # Latih model YOLO11-cls (+ fine-tune)
+│   ├── 1_preprocessing.py   # Cleaning + auto-annotation (FastSAM) + split
+│   └── 2_training.py        # Latih model YOLO11-seg (+ fine-tune)
 ├── dataset/
-│   ├── raw/{kategori}/      # Gambar mentah per kategori (sumber kebenaran)
-│   └── processed/           # Hasil preprocessing, dibuat otomatis
+│   ├── raw/{kategori}/      # Foto mentah per kategori (sumber kebenaran)
+│   └── yolo_seg/            # Dataset siap-latih (images + labels + data.yaml), dibuat otomatis
 └── model/
-    └── yolo_best.pt         # Model klasifikasi 4 kategori (dibaca backend)
+    └── yolo_best.pt         # Model segmentasi 4 kategori (dibaca backend)
 ```
 
 ---
@@ -93,11 +96,37 @@ npm run dev
 ```
 Buka alamat yang ditampilkan Vite (biasanya `http://localhost:5173`). Frontend otomatis meneruskan request `/api/...` ke backend di port 8000.
 
+### 3. Akses dari luar jaringan (Cloudflare Tunnel)
+
+Biar website bisa dibuka dari HP atau laptop lain lewat internet, pakai Cloudflare Tunnel — gratis, tanpa perlu daftar akun.
+
+**Install cloudflared** (sekali saja):
+```bash
+winget install Cloudflare.cloudflared
+```
+
+**Jalankan tunnel** di terminal terpisah (backend & frontend harus sudah jalan dulu):
+```bash
+cloudflared tunnel --url http://localhost:5173
+```
+
+Tunggu beberapa detik sampai muncul output seperti ini:
+```
++----------------------------------------------------------+
+|  Your quick Tunnel has been created! Visit it at         |
+|  https://xxxx-xxxx-xxxx.trycloudflare.com                |
++----------------------------------------------------------+
+```
+
+URL `trycloudflare.com` itu langsung bisa dibuka dari mana saja. Aktif selama terminal tunnel masih jalan.
+
+> **Catatan:** URL berubah setiap kali tunnel di-restart. Untuk URL permanen, perlu akun Cloudflare (tetap gratis).
+
 ---
 
 ## Pipeline: Menyiapkan Data & Melatih Model
 
-Urutannya: **taruh gambar → preprocessing → training**.
+Urutannya: **taruh gambar → preprocessing (auto-annotation) → training**.
 
 ### Langkah 1 — Taruh gambar mentah
 Masukkan gambar langsung ke folder kategorinya:
@@ -108,11 +137,15 @@ dataset/raw/b3/000001.jpg
 dataset/raw/residu/000001.jpg
 ```
 
-### Langkah 2 — Preprocessing
+### Langkah 2 — Preprocessing + Auto-annotation
 ```bash
 python pipeline/1_preprocessing.py
 ```
-Membersihkan gambar rusak/duplikat (perceptual hash), resize ke 224×224, balance ke 1000 foto per kategori (augmentasi kalau kurang, downsample kalau kebanyakan), lalu bagi 80/10/10 ke `dataset/processed/`.
+Yang dilakukan:
+1. Hapus foto rusak & duplikat (perceptual hash / dHash)
+2. **Auto-annotation**: tiap foto dijalankan ke FastSAM untuk dapat mask objek utamanya, kelasnya diambil dari nama folder → label segmentasi di-generate tanpa anotasi manual
+3. Split 80/10/10 ke `dataset/yolo_seg/` (format YOLO-seg: images + labels + data.yaml)
+4. Simpan preview anotasi ke `dataset/cek_anotasi.png` — **cek dulu hasilnya sebelum training!**
 
 ### Langkah 3 — Training
 Training penuh dari awal:
@@ -136,15 +169,15 @@ python pipeline/2_training.py --finetune --epochs 30
 | Fitur | Lokasi |
 |------|--------|
 | Path model & threshold keyakinan | `backend/main.py:9` |
-| Load model YOLO saat backend start | `backend/main.py:21` |
-| Perbaikan kontras CLAHE | `enhance_image()` — `backend/main.py:29` |
-| TTA — jalankan model 5 variasi, rata-rata probabilitas | `classify_with_tta()` — `backend/main.py:39` |
-| Data info tiap kategori (label, warna, tips) | `TRASH_INFO` — `backend/main.py:62` |
-| Fallback untuk sampah tidak dikenali | `_FALLBACK` — `backend/main.py:92` |
-| Endpoint cek status backend | `GET /health` — `backend/main.py:112` |
-| Endpoint klasifikasi utama | `POST /classify` — `backend/main.py:118` |
-| Jalankan pipeline dari API | `POST /pipeline/run` — `backend/main.py:173` |
-| Cek status & log pipeline | `GET /pipeline/status` — `backend/main.py:185` |
+| Load model YOLO-seg saat backend start | `backend/main.py:22` |
+| Perbaikan kontras CLAHE | `enhance_image()` — `backend/main.py:30` |
+| Inferensi segmentasi (1× per request) | `run_segmentation()` — `backend/main.py:40` |
+| Data info tiap kategori (label, warna, tips) | `TRASH_INFO` — `backend/main.py:65` |
+| Fallback untuk sampah tidak dikenali | `_FALLBACK` — `backend/main.py:95` |
+| Endpoint cek status backend | `GET /health` |
+| Endpoint klasifikasi utama | `POST /classify` |
+| Jalankan pipeline dari API | `POST /pipeline/run` |
+| Cek status & log pipeline | `GET /pipeline/status` |
 
 ### Frontend — `frontend/src/`
 | Fitur | Lokasi |
@@ -162,25 +195,26 @@ python pipeline/2_training.py --finetune --epochs 30
 ### Pipeline — `pipeline/`
 | Fitur | Lokasi |
 |------|--------|
-| Daftar 4 kategori | `CATEGORIES` — `pipeline/1_preprocessing.py:33` |
-| Fingerprint foto (perceptual hash / dHash) | `get_phash()` — `pipeline/1_preprocessing.py:50` |
-| Bersihkan file rusak & duplikat per kategori | `clean_category()` — `pipeline/1_preprocessing.py:60` |
-| Config augmentasi gambar | `aug_pipeline` — `pipeline/1_preprocessing.py:88` |
-| Resize + balance + split dataset | `prepare_all()` — `pipeline/1_preprocessing.py:138` |
-| Grafik distribusi 4 kategori | `visualize()` — `pipeline/1_preprocessing.py:193` |
-| Siapkan dataset YOLO (balance per kategori) | `prepare_dataset()` — `pipeline/2_training.py:31` |
-| Training penuh YOLO11l-cls | `train_yolo()` — `pipeline/2_training.py:72` |
-| Fine-tune dari model yang sudah ada | `finetune_yolo()` — `pipeline/2_training.py:98` |
-| Evaluasi akurasi Top-1 | `evaluate_yolo()` — `pipeline/2_training.py:130` |
+| Daftar 4 kategori | `CATEGORIES` — `pipeline/1_preprocessing.py:27` |
+| Fingerprint foto (perceptual hash / dHash) | `get_phash()` — `pipeline/1_preprocessing.py:49` |
+| Bersihkan file rusak & duplikat per kategori | `clean_category()` — `pipeline/1_preprocessing.py:62` |
+| Auto-annotation satu foto via FastSAM | `annotate_image()` — `pipeline/1_preprocessing.py:115` |
+| Split + tulis dataset YOLO-seg + data.yaml | `build_dataset()` — `pipeline/1_preprocessing.py:163` |
+| Preview overlay anotasi | `preview_annotations()` — `pipeline/1_preprocessing.py:210` |
+| Grafik distribusi 4 kategori | `visualize()` — `pipeline/1_preprocessing.py:250` |
+| Training penuh YOLO11s-seg | `train_yolo()` — `pipeline/2_training.py:29` |
+| Fine-tune dari model yang sudah ada | `finetune_yolo()` — `pipeline/2_training.py:55` |
+| Evaluasi mAP50 (box + mask, per kategori) | `evaluate_yolo()` — `pipeline/2_training.py:92` |
 
 ---
 
 ## Catatan Penting
 
-- **4 kategori:** anorganik (kuning), organik (hijau), B3 (merah), residu (abu-abu). Klasifikasi langsung satu level, tidak ada hierarki.
-- **Threshold keyakinan:** di bawah 20% → tidak diklasifikasikan, user diminta foto ulang. Di bawah 60% → hasil ditampilkan tapi diberi tanda "kurang yakin".
-- **Training butuh GPU.** Default `DEVICE = "0"` (GPU NVIDIA). Ganti ke `"cpu"` di `pipeline/2_training.py:22` kalau tanpa GPU.
-- **TTA menambah beban.** Tiap klasifikasi menjalankan model 5×. Kalau butuh lebih cepat bisa dikurangi di `classify_with_tta()`.
+- **4 kategori:** anorganik (kuning), organik (hijau), B3 (merah), residu (abu-abu).
+- **Model = YOLO11s-seg** (deteksi + segmentasi), input 512px — dipilih supaya muat di VRAM 4GB (RTX 3050 Laptop). FastSAM hanya dipakai sekali di preprocessing untuk generate label — bukan bagian dari model final.
+- **Threshold keyakinan:** tidak ada deteksi atau confidence < 20% → "Tidak Dikenali", user diminta foto ulang. Di bawah 60% → hasil ditampilkan tapi diberi tanda "kurang yakin".
+- **Training butuh GPU.** Default `DEVICE = "0"` (GPU NVIDIA). Ganti ke `"cpu"` di `pipeline/2_training.py:20` kalau tanpa GPU.
+- **Augmentasi offline tidak diperlukan** — training YOLO-seg sudah punya augmentasi bawaan (mosaic, flip, HSV shift, scale, dll).
 - **Kotak di webcam bukan output AI.** Itu hasil deteksi gerakan (background subtraction) yang dikode manual, hanya untuk memicu auto-jepret.
 
 ---
@@ -189,5 +223,5 @@ python pipeline/2_training.py --finetune --epochs 30
 
 **Backend:** Python, FastAPI, Uvicorn, Ultralytics YOLO11, OpenCV, Pillow, NumPy.  
 **Frontend:** React 19, Vite, Tailwind CSS.  
-**Model:** YOLO11l-cls (klasifikasi), transfer learning dari bobot pretrained ImageNet.  
-**Pipeline:** Albumentations (augmentasi), Matplotlib, tqdm.
+**Model:** YOLO11s-seg (segmentasi instans, 4 kategori), transfer learning dari bobot pretrained COCO.  
+**Pipeline:** FastSAM (auto-annotation), Matplotlib, tqdm.

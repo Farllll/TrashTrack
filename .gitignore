@@ -17,18 +17,16 @@ frontend/dist/
 dataset/raw/
 dataset/processed/
 dataset/yolo_cls/
-dataset/yolo_cls_lvl1/
+dataset/yolo_seg/
 dataset/temp/
-dataset/_review/
-dataset/trashnet.zip
-dataset/trashnet_raw/
 dataset/distribusi_dataset.png
+dataset/cek_anotasi.png
 
 # YOLO training run folders (generated otomatis saat training)
 model/yolo_classifier*/
 model/yolo_kategori*/
+model/yolo_seg*/
 model/yolo_finetune/
-model/yolo_lvl1/
 
 # OS
 .DS_Store

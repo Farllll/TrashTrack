@@ -1,4 +1,4 @@
-import sys, shutil, random
+import sys, shutil
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
@@ -6,91 +6,43 @@ from pathlib import Path
 from ultralytics import YOLO
 
 ROOT_DIR = Path(__file__).parent.parent.resolve()
-random.seed(42)
-
 
 # ─────────────────────────────────────────────────
 #  KONFIGURASI
 # ─────────────────────────────────────────────────
-PROCESSED_DIR = ROOT_DIR / "dataset" / "processed"
-YOLO_DIR      = ROOT_DIR / "dataset" / "yolo_cls"
-MODEL_DIR     = ROOT_DIR / "model"
-YOLO_BEST     = MODEL_DIR / "yolo_best.pt"
+DATA_YAML = ROOT_DIR / "dataset" / "yolo_seg" / "data.yaml"
+MODEL_DIR = ROOT_DIR / "model"
+YOLO_BEST = MODEL_DIR / "yolo_best.pt"
 
-EPOCHS   = 100
-IMG_SIZE = 224
-BATCH    = 16
+EPOCHS   = 60
+IMG_SIZE = 512   # 640 butuh VRAM > 4GB — 512 muat di RTX 3050 Laptop tanpa spill ke RAM
+BATCH    = 8
 PATIENCE = 15
-DEVICE   = "0"
+DEVICE   = "0"   # ganti "cpu" kalau nggak ada GPU
 
 MODEL_DIR.mkdir(exist_ok=True)
 
 
 # ─────────────────────────────────────────────────
-#  STEP 1: SIAPKAN DATASET 4 KATEGORI
-# ─────────────────────────────────────────────────
-def prepare_dataset():
-    # Gabung semua jenis per kategori jadi satu folder, lalu balance dengan
-    # cap ke jumlah kategori terkecil (downsample acak) biar model nggak bias
-    print("\n[PREP] Menyiapkan dataset 4 kategori...")
-    if YOLO_DIR.exists():
-        shutil.rmtree(YOLO_DIR)
-
-    total = 0
-    for split in ["train", "val", "test"]:
-        split_src = PROCESSED_DIR / split
-        if not split_src.exists():
-            print(f"  {split_src} tidak ditemukan — jalankan 1_preprocessing.py dulu")
-            return False
-
-        per_kategori = {}
-        for kategori_dir in split_src.iterdir():
-            if not kategori_dir.is_dir():
-                continue
-            imgs = list(kategori_dir.glob("*.jpg"))
-            if imgs:
-                per_kategori[kategori_dir.name] = imgs
-        if not per_kategori:
-            return False
-
-        batas = min(len(v) for v in per_kategori.values())
-        count = 0
-        for kategori, imgs in per_kategori.items():
-            random.shuffle(imgs)
-            dst = YOLO_DIR / split / kategori
-            dst.mkdir(parents=True, exist_ok=True)
-            for i, img in enumerate(imgs[:batas]):
-                shutil.copy2(img, dst / f"{i:06d}.jpg")
-                count += 1
-        print(f"  {split:<6}: {count} foto (cap per kategori: {batas})")
-        total += count
-
-    print(f"  Total: {total} | Lokasi: {YOLO_DIR}\n")
-    return True
-
-
-# ─────────────────────────────────────────────────
-#  STEP 2: TRAINING
+#  TRAINING
 # ─────────────────────────────────────────────────
 def train_yolo():
-    # Train model klasifikasi 4 kategori dari awal pakai YOLO11l-cls, simpan ke yolo_best.pt
-    print("\n[TRAIN] Training model 4 kategori (yolo11l-cls)...")
-    print(f"  Epochs: {EPOCHS} | Batch: {BATCH} | Device: {DEVICE}")
+    # Train model segmentasi 4 kategori dari awal pakai YOLO11s-seg, simpan ke yolo_best.pt
+    print("\n[TRAIN] Training model segmentasi 4 kategori (yolo11s-seg)...")
+    print(f"  Epochs: {EPOCHS} | Batch: {BATCH} | Imgsz: {IMG_SIZE} | Device: {DEVICE}")
 
-    model   = YOLO("yolo11l-cls.pt")
+    model   = YOLO("yolo11s-seg.pt")
     results = model.train(
-        data            = str(YOLO_DIR),
-        epochs          = EPOCHS,
-        imgsz           = IMG_SIZE,
-        batch           = BATCH,
-        device          = DEVICE,
-        project         = str(MODEL_DIR),
-        name            = "yolo_kategori",
-        patience        = PATIENCE,
-        save            = True,
-        plots           = True,
-        dropout         = 0.2,
-        label_smoothing = 0.1,
+        data     = str(DATA_YAML),
+        epochs   = EPOCHS,
+        imgsz    = IMG_SIZE,
+        batch    = BATCH,
+        device   = DEVICE,
+        project  = str(MODEL_DIR),
+        name     = "yolo_seg",
+        patience = PATIENCE,
+        save     = True,
+        plots    = True,
     )
     best = Path(results.save_dir) / "weights" / "best.pt"
     shutil.copy2(best, YOLO_BEST)
@@ -112,22 +64,20 @@ def finetune_yolo(base_model_path: Path = YOLO_BEST, epochs: int = 30):
     print(f"\n[FINETUNE] Fine-tuning dari {base_model_path.name} ({epochs} epoch)...")
     model   = YOLO(str(base_model_path))
     results = model.train(
-        data            = str(YOLO_DIR),
-        epochs          = epochs,
-        imgsz           = IMG_SIZE,
-        batch           = BATCH,
-        device          = DEVICE,
-        project         = str(MODEL_DIR),
-        name            = "yolo_finetune",
-        patience        = 10,
-        save            = True,
-        plots           = True,
-        lr0             = 0.001,
-        lrf             = 0.01,
-        warmup_epochs   = 3,
-        dropout         = 0.2,
-        label_smoothing = 0.1,
-        freeze          = 10,
+        data          = str(DATA_YAML),
+        epochs        = epochs,
+        imgsz         = IMG_SIZE,
+        batch         = BATCH,
+        device        = DEVICE,
+        project       = str(MODEL_DIR),
+        name          = "yolo_finetune",
+        patience      = 10,
+        save          = True,
+        plots         = True,
+        lr0           = 0.001,
+        lrf           = 0.01,
+        warmup_epochs = 3,
+        freeze        = 10,
     )
     best = Path(results.save_dir) / "weights" / "best.pt"
     shutil.copy2(best, YOLO_BEST)
@@ -136,20 +86,29 @@ def finetune_yolo(base_model_path: Path = YOLO_BEST, epochs: int = 30):
 
 
 # ─────────────────────────────────────────────────
-#  STEP 3: EVALUASI
+#  EVALUASI
 # ─────────────────────────────────────────────────
 def evaluate_yolo(model_path):
-    # Uji model di test set. Top-1 = seberapa sering tebakan pertama benar
+    # Uji model di test set. mAP50 = akurasi deteksi+mask pada threshold IoU 50%
     print(f"\n[EVAL] Evaluasi pada test set...")
     model   = YOLO(model_path)
     metrics = model.val(
-        data   = str(YOLO_DIR),
-        split  = "test",
-        imgsz  = IMG_SIZE,
-        device = DEVICE,
-        verbose= False,
+        data    = str(DATA_YAML),
+        split   = "test",
+        imgsz   = IMG_SIZE,
+        device  = DEVICE,
+        verbose = False,
     )
-    print(f"  Akurasi Top-1 : {metrics.top1*100:.2f}%")
+    print(f"  mAP50 (box)  : {metrics.box.map50*100:.2f}%")
+    print(f"  mAP50 (mask) : {metrics.seg.map50*100:.2f}%")
+
+    # mAP50 per kategori (kalau tersedia)
+    try:
+        names = metrics.names
+        for idx, ap in zip(metrics.seg.ap_class_index, metrics.seg.ap50):
+            print(f"    {names[int(idx)]:<12}: {ap*100:.2f}%")
+    except Exception:
+        pass
     return metrics
 
 
@@ -159,7 +118,7 @@ def evaluate_yolo(model_path):
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="YOLO Training TrashTrack (4 kategori)")
+    parser = argparse.ArgumentParser(description="YOLO-seg Training TrashTrack (4 kategori)")
     parser.add_argument("--finetune", action="store_true",
                         help="Fine-tune dari model yang ada (lebih cepat dari training penuh)")
     parser.add_argument("--epochs", type=int, default=30,
@@ -167,11 +126,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print("=" * 60)
-    print("  YOLO TRAINING — 4 KATEGORI SAMPAH")
+    print("  YOLO-SEG TRAINING — 4 KATEGORI SAMPAH")
     print("  Kategori: anorganik | organik | b3 | residu")
     print("=" * 60)
 
-    if not prepare_dataset():
+    if not DATA_YAML.exists():
+        print(f"  {DATA_YAML} tidak ditemukan — jalankan 1_preprocessing.py dulu")
         sys.exit(1)
 
     if args.finetune:

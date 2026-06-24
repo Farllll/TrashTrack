@@ -17,9 +17,10 @@ from ultralytics import YOLO
 #  KONFIGURASI
 # ─────────────────────────────────────────────────
 ROOT_DIR        = Path(__file__).parent.parent.resolve()
-MODEL_PATH      = ROOT_DIR / "model" / "yolo_best.pt"   # model klasifikasi 4 kategori
+MODEL_PATH      = ROOT_DIR / "model" / "yolo_best.pt"   # model segmentasi 4 kategori
 CONF_THRESHOLD  = 60.0    # di bawah nilai ini, prediksi ditandai kurang yakin
 MIN_CONFIDENCE  = 20.0    # di bawah nilai ini, gambar TIDAK diklasifikasikan (dianggap bukan sampah dikenal)
+IMG_SIZE        = 512     # ukuran input model seg (samakan dengan training)
 
 if not MODEL_PATH.exists():
     raise FileNotFoundError(f"Model tidak ditemukan: {MODEL_PATH} — jalankan 2_training.py dulu")
@@ -40,30 +41,29 @@ def enhance_image(img: Image.Image) -> Image.Image:
 
 
 # ─────────────────────────────────────────────────
-#  AUGMENTASI SAAT INFERENSI / TTA (5 variasi)
+#  INFERENSI SEGMENTASI
 # ─────────────────────────────────────────────────
-def _run_model(pil_img: Image.Image) -> np.ndarray:
-    res = _model(pil_img, imgsz=224, verbose=False)
-    return res[0].probs.data.cpu().numpy()
+def run_segmentation(img: Image.Image):
+    # Jalankan model seg sekali. Background otomatis diabaikan karena model
+    # cuma belajar area objek sampah, bukan seluruh frame.
+    # Return: (kategori, confidence %, {kategori: conf terbaik per kategori}) atau None kalau tidak ada deteksi
+    res = _model(img, imgsz=IMG_SIZE, conf=0.10, verbose=False)[0]
+    if res.boxes is None or len(res.boxes) == 0:
+        return None
 
-def classify_with_tta(img: Image.Image) -> tuple[str, float, np.ndarray]:
-    """Jalankan model 5x pada variasi gambar lalu rata-rata probabilitasnya (TTA)."""
-    arr = np.array(img)
-    h, w = arr.shape[:2]
-    crop_margin = int(min(h, w) * 0.10)
+    confs   = res.boxes.conf.cpu().numpy()
+    classes = res.boxes.cls.cpu().numpy().astype(int)
 
-    variants: list[Image.Image] = [
-        img,                                                              # gambar asli
-        Image.fromarray(cv2.flip(arr, 1)),                               # cermin horizontal
-        Image.fromarray(np.clip(arr.astype(np.float32)*1.25,0,255).astype(np.uint8)),  # lebih terang
-        Image.fromarray(np.clip(arr.astype(np.float32)*0.78,0,255).astype(np.uint8)),  # lebih gelap
-        Image.fromarray(arr[crop_margin:h-crop_margin, crop_margin:w-crop_margin]).resize((224,224)),  # potong tengah
-    ]
+    # Confidence terbaik per kategori (dari semua objek yang terdeteksi)
+    per_cat: dict[str, float] = {}
+    for c, cf in zip(classes, confs):
+        name = _model.names[int(c)]
+        per_cat[name] = max(per_cat.get(name, 0.0), float(cf) * 100)
 
-    all_probs = np.stack([_run_model(v) for v in variants])
-    avg = all_probs.mean(axis=0)
-    top1 = int(np.argmax(avg))
-    return _model.names[top1], float(avg[top1]) * 100, avg
+    best = int(np.argmax(confs))
+    kategori   = _model.names[classes[best]]
+    confidence = float(confs[best]) * 100
+    return kategori, confidence, per_cat
 
 
 # ─────────────────────────────────────────────────
@@ -221,26 +221,24 @@ async def classify(file: UploadFile = File(...)):
 
     contents = await file.read()
     try:
-        img = Image.open(io.BytesIO(contents)).convert("RGB").resize((224, 224))
+        img = Image.open(io.BytesIO(contents)).convert("RGB")
     except Exception:
         raise HTTPException(status_code=400, detail="Gambar tidak dapat dibaca")
 
-    # ── Langkah 1: Peningkatan kontras dengan CLAHE ──────────────────────
+    # ── Step 1: Perbaikan kontras dengan CLAHE ───────────────────────────
     img = enhance_image(img)
 
-    # ── Langkah 2: Klasifikasi dengan TTA (5 variasi gambar) ─────────────
-    kategori, confidence, avg_probs = classify_with_tta(img)
-    confidence = round(confidence, 2)
+    # ── Step 2: Deteksi + segmentasi objek sampah ────────────────────────
+    hasil = run_segmentation(img)
 
-    # ── Tiga kemungkinan teratas ─────────────────────────────────────────
-    top3 = sorted(
-        [{"lvl2": _model.names[i], "confidence": round(float(avg_probs[i])*100, 2)}
-         for i in range(len(_model.names))],
-        key=lambda x: -x["confidence"]
-    )[:3]
-
-    # Bila keyakinan terlalu rendah, jangan paksa klasifikasi ke kategori apa pun.
-    if confidence < MIN_CONFIDENCE:
+    # Tidak ada objek terdeteksi ATAU confidence terlalu rendah → jangan paksa klasifikasi
+    if hasil is None or hasil[1] < MIN_CONFIDENCE:
+        confidence = round(hasil[1], 2) if hasil else 0.0
+        per_cat    = hasil[2] if hasil else {}
+        top3 = sorted(
+            [{"lvl2": k, "confidence": round(v, 2)} for k, v in per_cat.items()],
+            key=lambda x: -x["confidence"]
+        )[:3]
         return {
             **_FALLBACK,
             "confidence"     : confidence,
@@ -249,8 +247,16 @@ async def classify(file: UploadFile = File(...)):
             "lvl2"           : "unknown",
             "lvl1"           : "unknown",
             "top3"           : top3,
-            "method"         : "TTA",
+            "method"         : "SEG",
         }
+
+    kategori, confidence, per_cat = hasil
+    confidence = round(confidence, 2)
+
+    top3 = sorted(
+        [{"lvl2": k, "confidence": round(v, 2)} for k, v in per_cat.items()],
+        key=lambda x: -x["confidence"]
+    )[:3]
 
     info = TRASH_INFO.get(kategori, _FALLBACK)
     return {
@@ -261,7 +267,7 @@ async def classify(file: UploadFile = File(...)):
         "lvl2"           : kategori,
         "lvl1"           : kategori,
         "top3"           : top3,
-        "method"         : "TTA",
+        "method"         : "SEG",
     }
 
 
