@@ -63,7 +63,10 @@ def run_segmentation(img: Image.Image):
     best = int(np.argmax(confs))
     kategori   = _model.names[classes[best]]
     confidence = float(confs[best]) * 100
-    return kategori, confidence, per_cat
+
+    x1, y1, x2, y2 = res.boxes.xyxyn[best].cpu().numpy()
+    bbox = {"x1": float(x1), "y1": float(y1), "x2": float(x2), "y2": float(y2)}
+    return kategori, confidence, per_cat, bbox
 
 
 # ─────────────────────────────────────────────────
@@ -248,9 +251,10 @@ async def classify(file: UploadFile = File(...)):
             "lvl1"           : "unknown",
             "top3"           : top3,
             "method"         : "SEG",
+            "bbox"           : hasil[3] if hasil else None,
         }
 
-    kategori, confidence, per_cat = hasil
+    kategori, confidence, per_cat, bbox = hasil
     confidence = round(confidence, 2)
 
     top3 = sorted(
@@ -268,6 +272,7 @@ async def classify(file: UploadFile = File(...)):
         "lvl1"           : kategori,
         "top3"           : top3,
         "method"         : "SEG",
+        "bbox"           : bbox,
     }
 
 

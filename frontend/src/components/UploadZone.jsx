@@ -42,11 +42,9 @@ export default function UploadZone({ image, scanning, scanPct, onFile, onReset, 
       : result?.category === "B3" ? "#EF4444"
         : "#F59E0B";
 
-  // Bounding box mock — normalized 0–1 (akan diganti data API YOLO nanti)
-  // Format: { x1, y1, x2, y2 } dalam satuan 0–1 relatif ke gambar
-  const bbox = result?.bbox ?? { x1: 0.2, y1: 0.15, x2: 0.8, y2: 0.85 };
+  const bbox = result?.bbox ?? null;
 
-  const bboxStyle = imgSize.w > 0 && result ? {
+  const bboxStyle = imgSize.w > 0 && result && bbox ? {
     left: bbox.x1 * imgSize.w,
     top: bbox.y1 * imgSize.h,
     width: (bbox.x2 - bbox.x1) * imgSize.w,
